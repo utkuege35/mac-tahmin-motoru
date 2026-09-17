@@ -129,10 +129,16 @@
 
   <div class="masthead">
     <h1>Maç Tahmin Motoru</h1>
-    <div class="sub">Dixon–Coles Poisson modeli — canlı veri</div>
+    <div class="sub">Dixon–Coles Poisson modeli — canlı veri · <a href="dogrulama.html" style="color: var(--accent);">Doğrulama Paneli →</a></div>
   </div>
 
   <div class="status-line"><div class="status-dot" id="statusDot"></div><span id="statusText">Supabase'e bağlanılıyor…</span></div>
+
+  <div class="panel" style="margin-bottom:16px;">
+    <label for="fixtureSelect">Yaklaşan Gerçek Fikstürden Seç (opsiyonel — doğrulama için önerilir)</label>
+    <select id="fixtureSelect"><option value="">— Serbest seçim (takımları elle seç aşağıdan) —</option></select>
+    <div class="hint" style="margin-bottom:0;">Gerçek bir fikstür seçersen, maç oynandıktan sonra tahminin otomatik puanlanır. Serbest seçimde bu mümkün olmaz.</div>
+  </div>
 
   <div class="panel" style="margin-bottom:16px;">
     <label for="matchDate">Maç Tarihi (yorgunluk hesaplaması için)</label>
@@ -224,6 +230,11 @@
       <h2>Skor Olasılık Matrisi</h2>
       <div style="overflow-x:auto;"><table class="matrix" id="matrix"></table></div>
     </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <button class="run" id="saveBtn">Tahmini Kaydet (Doğrulama İçin)</button>
+      <div class="hint" id="saveStatus" style="margin-top:10px; margin-bottom:0;"></div>
+    </div>
   </div>
 
   <div class="note" id="noteBox">
@@ -269,11 +280,60 @@ async function loadData(){
     setStatus('ok', `Bağlandı — ${TEAM_STATS.length} takım için rakip-gücü-ayarlı katsayılar yüklendi.`);
     populateSelects();
     document.getElementById('runBtn').disabled = false;
+    loadFixtures();
   }catch(err){
     console.error(err);
     setStatus('err', 'Bağlantı hatası: ' + (err.message || err));
   }
 }
+
+let FIXTURES = [];
+
+async function loadFixtures(){
+  try{
+    const nowISO = new Date().toISOString();
+    const in21Days = new Date(Date.now() + 21*24*60*60*1000).toISOString();
+    const { data, error } = await sb
+      .from('matches')
+      .select('id, competition_id, home_team_id, away_team_id, utc_date')
+      .eq('status', 'SCHEDULED')
+      .gte('utc_date', nowISO)
+      .lte('utc_date', in21Days)
+      .order('utc_date', { ascending: true })
+      .limit(150);
+    if(error) throw error;
+    FIXTURES = data || [];
+
+    const sel = document.getElementById('fixtureSelect');
+    sel.innerHTML = '<option value="">— Serbest seçim (takımları elle seç aşağıdan) —</option>';
+    FIXTURES.forEach((f, idx) => {
+      const homeRow = TEAM_STATS.find(r => r.team_id === f.home_team_id);
+      const awayRow = TEAM_STATS.find(r => r.team_id === f.away_team_id);
+      if(!homeRow || !awayRow) return; // katsayısı olmayan takım (nadiren) atlanır
+      const dateStr = new Date(f.utc_date).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' });
+      const o = document.createElement('option');
+      o.value = idx;
+      o.textContent = `${dateStr} — ${homeRow.team_name} - ${awayRow.team_name}`;
+      sel.appendChild(o);
+    });
+  }catch(err){
+    console.error('Fikstür yüklenemedi:', err);
+  }
+}
+
+document.getElementById('fixtureSelect').addEventListener('change', (e) => {
+  const idx = e.target.value;
+  if(idx === '') { SELECTED_MATCH_ID = null; return; }
+  const f = FIXTURES[Number(idx)];
+  if(!f) return;
+  document.getElementById('homeTeam').value = f.home_team_id + '::' + f.competition_id;
+  document.getElementById('awayTeam').value = f.away_team_id + '::' + f.competition_id;
+  document.getElementById('matchDate').value = new Date(f.utc_date).toISOString().slice(0,10);
+  SELECTED_MATCH_ID = f.id;
+  fillStats();
+});
+
+let SELECTED_MATCH_ID = null;
 
 function populateSelects(){
   const homeSel = document.getElementById('homeTeam');
@@ -377,8 +437,8 @@ async function fillStats(){
 }
 const SHRINK_K_DISPLAY = 8;
 
-document.getElementById('homeTeam').addEventListener('change', fillStats);
-document.getElementById('awayTeam').addEventListener('change', fillStats);
+document.getElementById('homeTeam').addEventListener('change', () => { SELECTED_MATCH_ID = null; document.getElementById('fixtureSelect').value=''; fillStats(); });
+document.getElementById('awayTeam').addEventListener('change', () => { SELECTED_MATCH_ID = null; document.getElementById('fixtureSelect').value=''; fillStats(); });
 document.getElementById('matchDate').addEventListener('change', fillStats);
 
 // ---- Poisson + Dixon-Coles ----
@@ -393,6 +453,7 @@ function tau(x, y, lambdaH, lambdaA, rho){
 }
 const RHO = -0.10;
 const MAXG = 8;
+let LAST_RESULT = null;
 
 function computeAndRender(){
   const homeVal = document.getElementById('homeTeam').value;
@@ -441,6 +502,13 @@ function computeAndRender(){
   }
   scores.sort((a,b)=>b.p-a.p);
 
+  // Kaydet butonu için son hesaplanan sonucu sakla
+  LAST_RESULT = {
+    hRow, aRow, pHome, pDraw, pAway, lambdaHome, lambdaAway,
+    matchDate: document.getElementById('matchDate').value,
+  };
+  document.getElementById('saveStatus').textContent = '';
+
   document.getElementById('rHomeName').textContent = hRow ? hRow.team_name : '—';
   document.getElementById('rAwayName').textContent = aRow ? aRow.team_name : '—';
   document.getElementById('expScore').textContent = lambdaHome.toFixed(2) + ' — ' + lambdaAway.toFixed(2);
@@ -488,6 +556,38 @@ function computeAndRender(){
 }
 
 document.getElementById('runBtn').addEventListener('click', computeAndRender);
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  if(!LAST_RESULT || !LAST_RESULT.hRow || !LAST_RESULT.aRow){
+    document.getElementById('saveStatus').textContent = 'Önce "Olasılıkları Hesapla" butonuna bas.';
+    return;
+  }
+  const r = LAST_RESULT;
+  const statusEl = document.getElementById('saveStatus');
+  statusEl.textContent = 'Kaydediliyor…';
+  try{
+    const { error } = await sb.from('predictions').insert({
+      match_id: SELECTED_MATCH_ID,
+      home_team_id: r.hRow.team_id,
+      away_team_id: r.aRow.team_id,
+      competition_id: r.hRow.competition_id,
+      match_date: r.matchDate,
+      p_home: r.pHome,
+      p_draw: r.pDraw,
+      p_away: r.pAway,
+      lambda_home: r.lambdaHome,
+      lambda_away: r.lambdaAway,
+    });
+    if(error) throw error;
+    statusEl.textContent = SELECTED_MATCH_ID
+      ? 'Kaydedildi — gerçek fikstürle eşleşti, maç bitince otomatik puanlanacak.'
+      : 'Kaydedildi — ancak gerçek fikstürle eşleşmedi, otomatik puanlanamayacak (serbest seçimdi).';
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Kaydetme hatası: ' + (err.message || err);
+  }
+});
+
 loadData();
 </script>
 </body>
