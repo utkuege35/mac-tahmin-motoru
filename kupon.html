@@ -96,8 +96,8 @@
     <table class="coupon">
       <thead>
         <tr>
-          <th>Tarih</th><th>Lig</th><th>Maç</th><th>Beklenen Skor</th>
-          <th>Ev%</th><th>Ber%</th><th>Dep%</th><th>En Olası</th><th>2.5Ü%</th><th>KGV%</th>
+          <th>Tarih</th><th>Lig</th><th>Maç</th><th>En Olası Skor</th>
+          <th>Ev%</th><th>Ber%</th><th>Dep%</th><th>En Olası Sonuç</th><th>2.5Ü%</th><th>KGV%</th>
         </tr>
       </thead>
       <tbody id="couponBody"><tr><td colspan="10" style="color:var(--muted2);">Tarih aralığı seçip "Maçları Listele"ye bas.</td></tr></tbody>
@@ -206,7 +206,7 @@ function computeMatch(homeRating, awayRating, matchDate){
   const lambdaHome = Math.max(0.05, attackHome * defenseAway * homeAdv);
   const lambdaAway = Math.max(0.05, attackAway * defenseHome);
 
-  let total = 0, pHome=0, pDraw=0, pAway=0, over25=0, btts=0;
+  let total = 0;
   for(let x=0; x<=MAXG; x++){
     for(let y=0; y<=MAXG; y++){
       let p = poissonPmf(x, lambdaHome) * poissonPmf(y, lambdaAway) * tau(x,y,lambdaHome,lambdaAway,RHO);
@@ -214,6 +214,8 @@ function computeMatch(homeRating, awayRating, matchDate){
       total += p;
     }
   }
+  let pHome=0, pDraw=0, pAway=0, over25=0, btts=0;
+  let bestX=0, bestY=0, bestP=0;
   for(let x=0; x<=MAXG; x++){
     for(let y=0; y<=MAXG; y++){
       let p = poissonPmf(x, lambdaHome) * poissonPmf(y, lambdaAway) * tau(x,y,lambdaHome,lambdaAway,RHO);
@@ -222,9 +224,10 @@ function computeMatch(homeRating, awayRating, matchDate){
       if(x>y) pHome+=p; else if(x===y) pDraw+=p; else pAway+=p;
       if(x+y>2.5) over25+=p;
       if(x>0 && y>0) btts+=p;
+      if(p > bestP){ bestP = p; bestX = x; bestY = y; }
     }
   }
-  return { lambdaHome, lambdaAway, pHome, pDraw, pAway, over25, btts };
+  return { lambdaHome, lambdaAway, pHome, pDraw, pAway, over25, btts, bestX, bestY, bestP };
 }
 
 document.getElementById('listBtn').addEventListener('click', async () => {
@@ -289,7 +292,7 @@ document.getElementById('listBtn').addEventListener('click', async () => {
       <td>${dateStr}</td>
       <td>${hRating.competition_code || ''}</td>
       <td>${hRating.team_name} - ${aRating.team_name}</td>
-      <td>${result.lambdaHome.toFixed(2)} — ${result.lambdaAway.toFixed(2)}</td>
+      <td>${result.bestX}-${result.bestY} <span style="color:var(--muted2);">(${(result.bestP*100).toFixed(0)}%)</span></td>
       <td>${(result.pHome*100).toFixed(0)}%</td>
       <td>${(result.pDraw*100).toFixed(0)}%</td>
       <td>${(result.pAway*100).toFixed(0)}%</td>
