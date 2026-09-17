@@ -221,7 +221,7 @@
   </div>
 
   <div class="note" id="noteBox">
-    Bu araç, gerçek sezon verisinden (lig ortalamasına göre normalize edilmiş hücum/savunma güçleri) Dixon–Coles düzeltmeli Poisson dağılımıyla olasılık üretir. Sakatlık, ceza, yorgunluk gibi etkenler henüz otomatik hesaba katılmıyor — gerekirse gol ortalamalarını elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
+    Bu araç, gerçek sezon verisinden (lig ortalamasına göre normalize edilmiş hücum/savunma güçleri) Dixon–Coles düzeltmeli Poisson dağılımıyla olasılık üretir. Sezon başında örneklem küçük olduğu için gol ortalamaları lig ortalamasına doğru "büzülüyor" (shrinkage) — sezon ilerledikçe gerçek performansa daha çok ağırlık verilir. Sakatlık, ceza, yorgunluk gibi etkenler henüz otomatik hesaba katılmıyor — gerekirse gol ortalamalarını elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
   </div>
 
 </div>
@@ -316,6 +316,16 @@ function findTeamRow(value){
   return TEAM_STATS.find(r => r.team_id === teamId && r.competition_id === compId);
 }
 
+// Shrinkage (büzülme) sabiti: örneklem küçükken tahmini lig ortalamasına
+// doğru çeker. k=8 demek, 8 maçlık "hayali lig-ortalaması" verisiyle
+// karıştırıyoruz demek. Sezon ilerledikçe (n büyüdükçe) etkisi azalır.
+const SHRINK_K = 8;
+
+function shrink(rawAvg, played, leagueAvg){
+  if(played == null || leagueAvg == null) return rawAvg;
+  return ((played * rawAvg) + (SHRINK_K * leagueAvg)) / (played + SHRINK_K);
+}
+
 function fillStats(){
   const homeVal = document.getElementById('homeTeam').value;
   const awayVal = document.getElementById('awayTeam').value;
@@ -323,13 +333,23 @@ function fillStats(){
   const a = findTeamRow(awayVal);
   if(!h || !a) return;
 
-  document.getElementById('homeGF').value = h.home_avg_scored;
-  document.getElementById('homeGA').value = h.home_avg_conceded;
-  document.getElementById('awayGF').value = a.away_avg_scored;
-  document.getElementById('awayGA').value = a.away_avg_conceded;
+  const lgHome = LEAGUE_AVG[h.competition_id] || {};
+  const lgAway = LEAGUE_AVG[a.competition_id] || {};
 
-  document.getElementById('homePlayed').textContent = `${h.home_played} iç saha maçı verisi`;
-  document.getElementById('awayPlayed').textContent = `${a.away_played} deplasman maçı verisi`;
+  const homeGF = shrink(h.home_avg_scored, h.home_played, lgHome.avg_home_goals);
+  const homeGA = shrink(h.home_avg_conceded, h.home_played, lgHome.avg_away_goals);
+  const awayGF = shrink(a.away_avg_scored, a.away_played, lgAway.avg_away_goals);
+  const awayGA = shrink(a.away_avg_conceded, a.away_played, lgAway.avg_home_goals);
+
+  document.getElementById('homeGF').value = homeGF.toFixed(2);
+  document.getElementById('homeGA').value = homeGA.toFixed(2);
+  document.getElementById('awayGF').value = awayGF.toFixed(2);
+  document.getElementById('awayGA').value = awayGA.toFixed(2);
+
+  const homeConf = h.home_played >= SHRINK_K ? 'yeterli örneklem' : `küçük örneklem, lig ortalamasına çekildi`;
+  const awayConf = a.away_played >= SHRINK_K ? 'yeterli örneklem' : `küçük örneklem, lig ortalamasına çekildi`;
+  document.getElementById('homePlayed').textContent = `${h.home_played} iç saha maçı verisi — ${homeConf}`;
+  document.getElementById('awayPlayed').textContent = `${a.away_played} deplasman maçı verisi — ${awayConf}`;
 }
 
 document.getElementById('homeTeam').addEventListener('change', fillStats);
