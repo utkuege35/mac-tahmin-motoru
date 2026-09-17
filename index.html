@@ -134,6 +134,12 @@
 
   <div class="status-line"><div class="status-dot" id="statusDot"></div><span id="statusText">Supabase'e bağlanılıyor…</span></div>
 
+  <div class="panel" style="margin-bottom:16px;">
+    <label for="matchDate">Maç Tarihi (yorgunluk hesaplaması için)</label>
+    <input type="date" id="matchDate">
+    <div class="hint" style="margin-bottom:0;">Her takımın bu tarihten önceki son maçına göre dinlenme günü hesaplanır.</div>
+  </div>
+
   <div class="grid">
     <div class="panel">
       <h2>Ev Sahibi</h2>
@@ -141,16 +147,16 @@
       <select id="homeTeam" disabled><option>Yükleniyor…</option></select>
       <div class="row2">
         <div>
-          <label for="homeGF">Maç başı attığı gol (ev)</label>
+          <label for="homeGF">Hücum Gücü (lig ort. = 1.00)</label>
           <input type="number" id="homeGF" step="0.01" min="0">
         </div>
         <div>
-          <label for="homeGA">Maç başı yediği gol (ev)</label>
+          <label for="homeGA">Savunma Gücü (lig ort. = 1.00, düşük=iyi)</label>
           <input type="number" id="homeGA" step="0.01" min="0">
         </div>
       </div>
       <div class="played-badge" id="homePlayed"></div>
-      <div class="hint">Değerler gerçek sezon verisinden otomatik geldi. Sakat/cezalı oyuncu, form gibi etkenler için elle düzeltebilirsin.</div>
+      <div class="hint">Değerler, tüm ligdeki maçlar rakip gücüne göre ağırlıklandırılarak otomatik hesaplandı. Sakat/cezalı oyuncu gibi etkenler için elle düzeltebilirsin.</div>
     </div>
 
     <div class="panel">
@@ -159,16 +165,16 @@
       <select id="awayTeam" disabled><option>Yükleniyor…</option></select>
       <div class="row2">
         <div>
-          <label for="awayGF">Maç başı attığı gol (deplasman)</label>
+          <label for="awayGF">Hücum Gücü (lig ort. = 1.00)</label>
           <input type="number" id="awayGF" step="0.01" min="0">
         </div>
         <div>
-          <label for="awayGA">Maç başı yediği gol (deplasman)</label>
+          <label for="awayGA">Savunma Gücü (lig ort. = 1.00, düşük=iyi)</label>
           <input type="number" id="awayGA" step="0.01" min="0">
         </div>
       </div>
       <div class="played-badge" id="awayPlayed"></div>
-      <div class="hint">Değerler gerçek sezon verisinden otomatik geldi. Sakat/cezalı oyuncu, form gibi etkenler için elle düzeltebilirsin.</div>
+      <div class="hint">Değerler, tüm ligdeki maçlar rakip gücüne göre ağırlıklandırılarak otomatik hesaplandı. Sakat/cezalı oyuncu gibi etkenler için elle düzeltebilirsin.</div>
     </div>
   </div>
 
@@ -221,7 +227,7 @@
   </div>
 
   <div class="note" id="noteBox">
-    Bu araç, gerçek sezon verisinden (lig ortalamasına göre normalize edilmiş hücum/savunma güçleri) Dixon–Coles düzeltmeli Poisson dağılımıyla olasılık üretir. Sezon başında örneklem küçük olduğu için gol ortalamaları lig ortalamasına doğru "büzülüyor" (shrinkage) — sezon ilerledikçe gerçek performansa daha çok ağırlık verilir. Sakatlık, ceza, yorgunluk gibi etkenler henüz otomatik hesaba katılmıyor — gerekirse gol ortalamalarını elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
+    Bu araç, tüm ligdeki maçları rakip gücüne göre ağırlıklandırarak (iteratif uyum) hesaplanan hücum/savunma katsayılarıyla Dixon–Coles düzeltmeli Poisson dağılımı üretir. Az maçlı takımlar için katsayı lig ortalamasına (1.00) doğru çekilir. Seçtiğin maç tarihine göre her takımın son maçından bu yana geçen gün sayısı hesaplanıp yorgunluk düzeltmesi (sezgisel, ampirik fit edilmemiş) uygulanır. Sakatlık/ceza durumu henüz otomatik değil — gerekirse katsayıları elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
   </div>
 
 </div>
@@ -234,11 +240,13 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let TEAM_STATS = [];   // team_full_stats view satırları
-let LEAGUE_AVG = {};   // competition_id -> {avg_home_goals, avg_away_goals}
+let TEAM_STATS = [];   // team_ratings_full view satırları (rakip gücüne göre ayarlı)
 
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
+
+// Bugünün tarihini varsayılan maç tarihi olarak koy
+document.getElementById('matchDate').value = new Date().toISOString().slice(0,10);
 
 function setStatus(kind, text){
   statusDot.className = 'status-dot' + (kind ? ' ' + kind : '');
@@ -248,23 +256,17 @@ function setStatus(kind, text){
 async function loadData(){
   setStatus('', 'Supabase\'e bağlanılıyor…');
   try{
-    const [{ data: teamRows, error: e1 }, { data: leagueRows, error: e2 }] = await Promise.all([
-      sb.from('team_full_stats').select('*'),
-      sb.from('league_averages').select('*'),
-    ]);
+    const { data: teamRows, error: e1 } = await sb.from('team_ratings_full').select('*');
     if(e1) throw e1;
-    if(e2) throw e2;
 
     TEAM_STATS = teamRows || [];
-    LEAGUE_AVG = {};
-    (leagueRows || []).forEach(r => { LEAGUE_AVG[r.competition_id] = r; });
 
     if(TEAM_STATS.length === 0){
-      setStatus('err', 'Veri bulunamadı — matches tablosu boş olabilir.');
+      setStatus('err', 'Veri bulunamadı — henüz katsayı hesaplanmamış olabilir (compute-ratings çalıştırıldı mı?).');
       return;
     }
 
-    setStatus('ok', `Bağlandı — ${TEAM_STATS.length} takım, ${leagueRows.length} lig yüklendi.`);
+    setStatus('ok', `Bağlandı — ${TEAM_STATS.length} takım için rakip-gücü-ayarlı katsayılar yüklendi.`);
     populateSelects();
     document.getElementById('runBtn').disabled = false;
   }catch(err){
@@ -316,44 +318,68 @@ function findTeamRow(value){
   return TEAM_STATS.find(r => r.team_id === teamId && r.competition_id === compId);
 }
 
-// Shrinkage (büzülme) sabiti: örneklem küçükken tahmini lig ortalamasına
-// doğru çeker. k=8 demek, 8 maçlık "hayali lig-ortalaması" verisiyle
-// karıştırıyoruz demek. Sezon ilerledikçe (n büyüdükçe) etkisi azalır.
-const SHRINK_K = 8;
-
-function shrink(rawAvg, played, leagueAvg){
-  if(played == null || leagueAvg == null) return rawAvg;
-  return ((played * rawAvg) + (SHRINK_K * leagueAvg)) / (played + SHRINK_K);
+// ---- Yorgunluk / dinlenme günü düzeltmesi ----
+// Not: ampirik olarak fit edilmiş bir katsayı değil, futbol analitiğinde
+// yaygın kabul gören kaba bir sezgisel düzeltme (3 günden az dinlenme
+// belirgin, 4-5 gün hafif performans düşüşüyle ilişkilendirilir).
+function fatigueAdjust(restDays){
+  if(restDays == null) return { attackMult: 1, defenseMult: 1, label: 'bilinmiyor (ilk maç)' };
+  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08, label: `${restDays} gün dinlenme — yorgunluk düzeltmesi uygulandı` };
+  if(restDays <= 5) return { attackMult: 0.96, defenseMult: 1.04, label: `${restDays} gün dinlenme — hafif düzeltme` };
+  return { attackMult: 1, defenseMult: 1, label: `${restDays} gün dinlenme — düzeltme yok` };
 }
 
-function fillStats(){
+async function getRestDays(teamId, beforeDateISO){
+  const { data, error } = await sb
+    .from('matches')
+    .select('utc_date')
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .lt('utc_date', beforeDateISO)
+    .order('utc_date', { ascending: false })
+    .limit(1);
+  if(error || !data || data.length === 0) return null;
+  const lastDate = new Date(data[0].utc_date);
+  const matchDate = new Date(beforeDateISO);
+  const diffMs = matchDate - lastDate;
+  return Math.max(0, Math.round(diffMs / (1000*60*60*24)));
+}
+
+let homeFatigue = { attackMult:1, defenseMult:1, label:'' };
+let awayFatigue = { attackMult:1, defenseMult:1, label:'' };
+
+async function fillStats(){
   const homeVal = document.getElementById('homeTeam').value;
   const awayVal = document.getElementById('awayTeam').value;
   const h = findTeamRow(homeVal);
   const a = findTeamRow(awayVal);
   if(!h || !a) return;
 
-  const lgHome = LEAGUE_AVG[h.competition_id] || {};
-  const lgAway = LEAGUE_AVG[a.competition_id] || {};
+  document.getElementById('homeGF').value = Number(h.attack).toFixed(2);
+  document.getElementById('homeGA').value = Number(h.defense).toFixed(2);
+  document.getElementById('awayGF').value = Number(a.attack).toFixed(2);
+  document.getElementById('awayGA').value = Number(a.defense).toFixed(2);
 
-  const homeGF = shrink(h.home_avg_scored, h.home_played, lgHome.avg_home_goals);
-  const homeGA = shrink(h.home_avg_conceded, h.home_played, lgHome.avg_away_goals);
-  const awayGF = shrink(a.away_avg_scored, a.away_played, lgAway.avg_away_goals);
-  const awayGA = shrink(a.away_avg_conceded, a.away_played, lgAway.avg_home_goals);
+  const homeConf = h.matches_played >= SHRINK_K_DISPLAY ? 'yeterli örneklem' : 'küçük örneklem, lig ortalamasına çekildi';
+  const awayConf = a.matches_played >= SHRINK_K_DISPLAY ? 'yeterli örneklem' : 'küçük örneklem, lig ortalamasına çekildi';
 
-  document.getElementById('homeGF').value = homeGF.toFixed(2);
-  document.getElementById('homeGA').value = homeGA.toFixed(2);
-  document.getElementById('awayGF').value = awayGF.toFixed(2);
-  document.getElementById('awayGA').value = awayGA.toFixed(2);
+  const matchDateVal = document.getElementById('matchDate').value;
+  const beforeISO = matchDateVal ? matchDateVal + 'T00:00:00Z' : new Date().toISOString();
 
-  const homeConf = h.home_played >= SHRINK_K ? 'yeterli örneklem' : `küçük örneklem, lig ortalamasına çekildi`;
-  const awayConf = a.away_played >= SHRINK_K ? 'yeterli örneklem' : `küçük örneklem, lig ortalamasına çekildi`;
-  document.getElementById('homePlayed').textContent = `${h.home_played} iç saha maçı verisi — ${homeConf}`;
-  document.getElementById('awayPlayed').textContent = `${a.away_played} deplasman maçı verisi — ${awayConf}`;
+  const [homeRest, awayRest] = await Promise.all([
+    getRestDays(h.team_id, beforeISO),
+    getRestDays(a.team_id, beforeISO),
+  ]);
+  homeFatigue = fatigueAdjust(homeRest);
+  awayFatigue = fatigueAdjust(awayRest);
+
+  document.getElementById('homePlayed').textContent = `${h.matches_played} maçlık veri — ${homeConf} — ${homeFatigue.label}`;
+  document.getElementById('awayPlayed').textContent = `${a.matches_played} maçlık veri — ${awayConf} — ${awayFatigue.label}`;
 }
+const SHRINK_K_DISPLAY = 8;
 
 document.getElementById('homeTeam').addEventListener('change', fillStats);
 document.getElementById('awayTeam').addEventListener('change', fillStats);
+document.getElementById('matchDate').addEventListener('change', fillStats);
 
 // ---- Poisson + Dixon-Coles ----
 function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
@@ -374,22 +400,19 @@ function computeAndRender(){
   const hRow = findTeamRow(homeVal);
   const aRow = findTeamRow(awayVal);
 
-  const homeGF = parseFloat(document.getElementById('homeGF').value) || 0;
-  const homeGA = parseFloat(document.getElementById('homeGA').value) || 0;
-  const awayGF = parseFloat(document.getElementById('awayGF').value) || 0;
-  const awayGA = parseFloat(document.getElementById('awayGA').value) || 0;
+  // Bu katsayılar artık lig ortalamasına değil, TÜM ligdeki maçlar rakip
+  // gücüne göre ağırlıklandırılarak (iteratif uyum) hesaplandı.
+  const attackHome = (parseFloat(document.getElementById('homeGF').value) || 1) * homeFatigue.attackMult;
+  const defenseHome = (parseFloat(document.getElementById('homeGA').value) || 1) * homeFatigue.defenseMult;
+  const attackAway = (parseFloat(document.getElementById('awayGF').value) || 1) * awayFatigue.attackMult;
+  const defenseAway = (parseFloat(document.getElementById('awayGA').value) || 1) * awayFatigue.defenseMult;
 
-  // Lig ortalamasına göre normalize edilmiş hücum/savunma gücü.
-  // Ev sahibinin ligi baz alınır (çoğu maç zaten aynı ligde).
-  const lg = LEAGUE_AVG[hRow ? hRow.competition_id : Object.keys(LEAGUE_AVG)[0]] || { avg_home_goals: 1.5, avg_away_goals: 1.2 };
+  const homeAdv = (hRow && hRow.home_adv) ? Number(hRow.home_adv) : 1.3;
 
-  const attackHome = homeGF / lg.avg_home_goals;
-  const defenseAway = awayGA / lg.avg_home_goals;
-  const lambdaHome = Math.max(0.05, lg.avg_home_goals * attackHome * defenseAway);
-
-  const attackAway = awayGF / lg.avg_away_goals;
-  const defenseHome = homeGA / lg.avg_away_goals;
-  const lambdaAway = Math.max(0.05, lg.avg_away_goals * attackAway * defenseHome);
+  // mu_home = attack_ev * defense_deplasman * ev_avantajı
+  // mu_away = attack_deplasman * defense_ev
+  const lambdaHome = Math.max(0.05, attackHome * defenseAway * homeAdv);
+  const lambdaAway = Math.max(0.05, attackAway * defenseHome);
 
   const matrix = [];
   let total = 0;
