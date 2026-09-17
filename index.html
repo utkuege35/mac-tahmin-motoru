@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maç Tahmin Motoru — Dixon-Coles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg: #0f2318;
+    --bg2: #143024;
+    --panel: #17342a;
+    --ink: #f2efe4;
+    --muted: #a9c2ae;
+    --muted2: #7c9787;
+    --accent: #e2b84c;
+    --accent-ink: #241a05;
+    --red: #c25b52;
+    --line: rgba(242,239,228,0.14);
+    --line-strong: rgba(242,239,228,0.28);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
+      --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
+      --red: #a5443c; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
+    --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
+    --red: #a5443c; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: radial-gradient(ellipse at top, var(--bg2), var(--bg) 60%);
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    min-height: 100vh;
+    padding: 28px 16px 64px;
+  }
+  .wrap{ max-width: 920px; margin: 0 auto; }
+
+  .masthead{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom: 1px solid var(--line-strong);
+    padding-bottom: 14px; margin-bottom: 22px; gap: 12px; flex-wrap: wrap;
+  }
+  .masthead h1{
+    font-family:'Oswald', sans-serif; font-weight:600; letter-spacing:0.02em;
+    font-size: clamp(1.5rem, 4vw, 2.1rem); margin:0; color: var(--ink);
+  }
+  .masthead .sub{ color: var(--muted); font-size: 0.8rem; }
+
+  .status-line{
+    font-size: 0.72rem; color: var(--muted2); margin-bottom: 18px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background: var(--muted2); }
+  .status-dot.ok{ background:#6fbf73; }
+  .status-dot.err{ background: var(--red); }
+
+  .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px){ .grid{ grid-template-columns: 1fr; } }
+
+  .panel{ background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px; }
+  .panel h2{ font-family:'Oswald', sans-serif; font-weight:500; font-size: 1rem; margin: 0 0 14px; color: var(--accent); letter-spacing: 0.02em; }
+
+  label{ display:block; font-size:0.72rem; color: var(--muted); margin-bottom:4px; }
+  select, input[type=number]{
+    width:100%; background: var(--bg); border: 1px solid var(--line-strong);
+    color: var(--ink); border-radius: 4px; padding: 9px 10px; font-family: inherit;
+    font-size: 0.9rem; margin-bottom: 12px;
+  }
+  select:disabled{ opacity: 0.5; }
+  select:focus, input:focus{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .hint{ font-size: 0.68rem; color: var(--muted2); margin-top:-8px; margin-bottom:12px; line-height:1.4; }
+
+  button.run{
+    width:100%; background: var(--accent); color: var(--accent-ink); border:none;
+    border-radius: 4px; padding: 12px; font-family:'Oswald',sans-serif; font-weight:600;
+    font-size: 0.95rem; letter-spacing: 0.03em; cursor:pointer; margin-top: 4px;
+  }
+  button.run:hover{ filter: brightness(1.06); }
+  button.run:disabled{ opacity:0.5; cursor: not-allowed; }
+
+  .results{ margin-top: 22px; } .results.hidden{ display:none; }
+  .scoreline{ display:flex; align-items:center; justify-content:center; gap: 18px; padding: 18px 0 22px; border-bottom: 1px dashed var(--line-strong); margin-bottom: 18px; }
+  .teamname{ font-family:'Oswald', sans-serif; font-size: 1rem; font-weight:500; text-align:center; max-width:200px; }
+  .vs{ color: var(--muted2); font-size: 0.8rem; }
+
+  .prob-bars{ display:flex; gap: 10px; margin-bottom: 22px; }
+  .prob-bar{ flex:1; text-align:center; }
+  .prob-bar .pct{ font-family:'Oswald',sans-serif; font-size: 1.6rem; font-weight:600; }
+  .prob-bar .lbl{ font-size: 0.68rem; color: var(--muted); margin-top:2px; letter-spacing:0.03em; }
+  .prob-bar .bar-track{ height: 5px; background: var(--bg); border-radius: 3px; margin-top:8px; overflow:hidden; }
+  .prob-bar .bar-fill{ height:100%; background: var(--accent); }
+  .prob-bar.away .bar-fill{ background: var(--red); }
+  .prob-bar.draw .bar-fill{ background: var(--muted2); }
+
+  .subgrid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+  @media (max-width: 640px){ .subgrid{ grid-template-columns: 1fr; } }
+
+  .stat-line{ display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.82rem; }
+  .stat-line span:last-child{ color: var(--accent); font-weight:600; }
+
+  table.matrix{ border-collapse: collapse; width:100%; font-size: 0.72rem; }
+  table.matrix th, table.matrix td{ text-align:center; padding: 5px 3px; border: 1px solid var(--line); }
+  table.matrix th{ color: var(--muted); font-weight:500; font-family:'Oswald',sans-serif; }
+
+  .scorelist{ list-style:none; margin:0; padding:0; }
+  .scorelist li{ display:flex; justify-content:space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 0.82rem; }
+  .scorelist li span:last-child{ color: var(--accent); }
+
+  .note{ margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.7rem; color: var(--muted2); line-height:1.6; }
+
+  .played-badge{ font-size:0.62rem; color: var(--muted2); margin-top:-10px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <h1>Maç Tahmin Motoru</h1>
+    <div class="sub">Dixon–Coles Poisson modeli — canlı veri</div>
+  </div>
+
+  <div class="status-line"><div class="status-dot" id="statusDot"></div><span id="statusText">Supabase'e bağlanılıyor…</span></div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Ev Sahibi</h2>
+      <label for="homeTeam">Takım</label>
+      <select id="homeTeam" disabled><option>Yükleniyor…</option></select>
+      <div class="row2">
+        <div>
+          <label for="homeGF">Maç başı attığı gol (ev)</label>
+          <input type="number" id="homeGF" step="0.01" min="0">
+        </div>
+        <div>
+          <label for="homeGA">Maç başı yediği gol (ev)</label>
+          <input type="number" id="homeGA" step="0.01" min="0">
+        </div>
+      </div>
+      <div class="played-badge" id="homePlayed"></div>
+      <div class="hint">Değerler gerçek sezon verisinden otomatik geldi. Sakat/cezalı oyuncu, form gibi etkenler için elle düzeltebilirsin.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Deplasman</h2>
+      <label for="awayTeam">Takım</label>
+      <select id="awayTeam" disabled><option>Yükleniyor…</option></select>
+      <div class="row2">
+        <div>
+          <label for="awayGF">Maç başı attığı gol (deplasman)</label>
+          <input type="number" id="awayGF" step="0.01" min="0">
+        </div>
+        <div>
+          <label for="awayGA">Maç başı yediği gol (deplasman)</label>
+          <input type="number" id="awayGA" step="0.01" min="0">
+        </div>
+      </div>
+      <div class="played-badge" id="awayPlayed"></div>
+      <div class="hint">Değerler gerçek sezon verisinden otomatik geldi. Sakat/cezalı oyuncu, form gibi etkenler için elle düzeltebilirsin.</div>
+    </div>
+  </div>
+
+  <button class="run" id="runBtn" disabled>Olasılıkları Hesapla</button>
+
+  <div class="results hidden" id="results">
+    <div class="scoreline">
+      <div class="teamname" id="rHomeName">—</div>
+      <div class="vs">beklenen skor</div>
+      <div class="teamname" id="rAwayName">—</div>
+    </div>
+    <div style="text-align:center; margin-top:-14px; margin-bottom:20px; font-family:'Oswald',sans-serif; font-size:2rem; font-weight:600;" id="expScore">0.0 — 0.0</div>
+
+    <div class="prob-bars">
+      <div class="prob-bar home">
+        <div class="pct" id="pHome">—</div>
+        <div class="lbl">EV SAHİBİ KAZANIR</div>
+        <div class="bar-track"><div class="bar-fill" id="pHomeBar" style="width:0%"></div></div>
+      </div>
+      <div class="prob-bar draw">
+        <div class="pct" id="pDraw">—</div>
+        <div class="lbl">BERABERE</div>
+        <div class="bar-track"><div class="bar-fill" id="pDrawBar" style="width:0%"></div></div>
+      </div>
+      <div class="prob-bar away">
+        <div class="pct" id="pAway">—</div>
+        <div class="lbl">DEPLASMAN KAZANIR</div>
+        <div class="bar-track"><div class="bar-fill" id="pAwayBar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="subgrid">
+      <div class="panel">
+        <h2>Ek Piyasalar</h2>
+        <div class="stat-line"><span>2.5 Üst</span><span id="over25">—</span></div>
+        <div class="stat-line"><span>2.5 Alt</span><span id="under25">—</span></div>
+        <div class="stat-line"><span>Karşılıklı Gol Var (KG Var)</span><span id="btts">—</span></div>
+        <div class="stat-line"><span>Karşılıklı Gol Yok (KG Yok)</span><span id="nobtts">—</span></div>
+      </div>
+      <div class="panel">
+        <h2>En Olası 5 Skor</h2>
+        <ul class="scorelist" id="topScores"></ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Skor Olasılık Matrisi</h2>
+      <div style="overflow-x:auto;"><table class="matrix" id="matrix"></table></div>
+    </div>
+  </div>
+
+  <div class="note" id="noteBox">
+    Bu araç, gerçek sezon verisinden (lig ortalamasına göre normalize edilmiş hücum/savunma güçleri) Dixon–Coles düzeltmeli Poisson dağılımıyla olasılık üretir. Sakatlık, ceza, yorgunluk gibi etkenler henüz otomatik hesaba katılmıyor — gerekirse gol ortalamalarını elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
+  </div>
+
+</div>
+
+<script>
+// ---- Supabase bağlantısı ----
+// anon key tasarım gereği herkese açık kullanım için güvenlidir (RLS ile korunuyor).
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let TEAM_STATS = [];   // team_full_stats view satırları
+let LEAGUE_AVG = {};   // competition_id -> {avg_home_goals, avg_away_goals}
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+function setStatus(kind, text){
+  statusDot.className = 'status-dot' + (kind ? ' ' + kind : '');
+  statusText.textContent = text;
+}
+
+async function loadData(){
+  setStatus('', 'Supabase\'e bağlanılıyor…');
+  try{
+    const [{ data: teamRows, error: e1 }, { data: leagueRows, error: e2 }] = await Promise.all([
+      sb.from('team_full_stats').select('*'),
+      sb.from('league_averages').select('*'),
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+
+    TEAM_STATS = teamRows || [];
+    LEAGUE_AVG = {};
+    (leagueRows || []).forEach(r => { LEAGUE_AVG[r.competition_id] = r; });
+
+    if(TEAM_STATS.length === 0){
+      setStatus('err', 'Veri bulunamadı — matches tablosu boş olabilir.');
+      return;
+    }
+
+    setStatus('ok', `Bağlandı — ${TEAM_STATS.length} takım, ${leagueRows.length} lig yüklendi.`);
+    populateSelects();
+    document.getElementById('runBtn').disabled = false;
+  }catch(err){
+    console.error(err);
+    setStatus('err', 'Bağlantı hatası: ' + (err.message || err));
+  }
+}
+
+function populateSelects(){
+  const homeSel = document.getElementById('homeTeam');
+  const awaySel = document.getElementById('awayTeam');
+  homeSel.innerHTML = '';
+  awaySel.innerHTML = '';
+
+  // Lige göre grupla (optgroup)
+  const byComp = {};
+  TEAM_STATS.forEach(row => {
+    if(!byComp[row.competition_name]) byComp[row.competition_name] = [];
+    byComp[row.competition_name].push(row);
+  });
+
+  [homeSel, awaySel].forEach(sel => {
+    Object.keys(byComp).sort().forEach(compName => {
+      const og = document.createElement('optgroup');
+      og.label = compName;
+      byComp[compName]
+        .sort((a,b)=> a.team_name.localeCompare(b.team_name))
+        .forEach(row => {
+          const o = document.createElement('option');
+          o.value = row.team_id + '::' + row.competition_id;
+          o.textContent = row.team_name;
+          og.appendChild(o);
+        });
+      sel.appendChild(og);
+    });
+    sel.disabled = false;
+  });
+
+  // varsayılan seçim: ilk iki farklı takım
+  if(TEAM_STATS.length > 1){
+    homeSel.selectedIndex = 0;
+    awaySel.selectedIndex = 1;
+  }
+  fillStats();
+}
+
+function findTeamRow(value){
+  const [teamId, compId] = value.split('::').map(Number);
+  return TEAM_STATS.find(r => r.team_id === teamId && r.competition_id === compId);
+}
+
+function fillStats(){
+  const homeVal = document.getElementById('homeTeam').value;
+  const awayVal = document.getElementById('awayTeam').value;
+  const h = findTeamRow(homeVal);
+  const a = findTeamRow(awayVal);
+  if(!h || !a) return;
+
+  document.getElementById('homeGF').value = h.home_avg_scored;
+  document.getElementById('homeGA').value = h.home_avg_conceded;
+  document.getElementById('awayGF').value = a.away_avg_scored;
+  document.getElementById('awayGA').value = a.away_avg_conceded;
+
+  document.getElementById('homePlayed').textContent = `${h.home_played} iç saha maçı verisi`;
+  document.getElementById('awayPlayed').textContent = `${a.away_played} deplasman maçı verisi`;
+}
+
+document.getElementById('homeTeam').addEventListener('change', fillStats);
+document.getElementById('awayTeam').addEventListener('change', fillStats);
+
+// ---- Poisson + Dixon-Coles ----
+function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
+function factorial(n){ let r=1; for(let i=2;i<=n;i++) r*=i; return r; }
+function tau(x, y, lambdaH, lambdaA, rho){
+  if(x===0 && y===0) return 1 - (lambdaH*lambdaA*rho);
+  if(x===0 && y===1) return 1 + (lambdaH*rho);
+  if(x===1 && y===0) return 1 + (lambdaA*rho);
+  if(x===1 && y===1) return 1 - rho;
+  return 1;
+}
+const RHO = -0.10;
+const MAXG = 8;
+
+function computeAndRender(){
+  const homeVal = document.getElementById('homeTeam').value;
+  const awayVal = document.getElementById('awayTeam').value;
+  const hRow = findTeamRow(homeVal);
+  const aRow = findTeamRow(awayVal);
+
+  const homeGF = parseFloat(document.getElementById('homeGF').value) || 0;
+  const homeGA = parseFloat(document.getElementById('homeGA').value) || 0;
+  const awayGF = parseFloat(document.getElementById('awayGF').value) || 0;
+  const awayGA = parseFloat(document.getElementById('awayGA').value) || 0;
+
+  // Lig ortalamasına göre normalize edilmiş hücum/savunma gücü.
+  // Ev sahibinin ligi baz alınır (çoğu maç zaten aynı ligde).
+  const lg = LEAGUE_AVG[hRow ? hRow.competition_id : Object.keys(LEAGUE_AVG)[0]] || { avg_home_goals: 1.5, avg_away_goals: 1.2 };
+
+  const attackHome = homeGF / lg.avg_home_goals;
+  const defenseAway = awayGA / lg.avg_home_goals;
+  const lambdaHome = Math.max(0.05, lg.avg_home_goals * attackHome * defenseAway);
+
+  const attackAway = awayGF / lg.avg_away_goals;
+  const defenseHome = homeGA / lg.avg_away_goals;
+  const lambdaAway = Math.max(0.05, lg.avg_away_goals * attackAway * defenseHome);
+
+  const matrix = [];
+  let total = 0;
+  for(let x=0; x<=MAXG; x++){
+    const rowArr = [];
+    for(let y=0; y<=MAXG; y++){
+      let p = poissonPmf(x, lambdaHome) * poissonPmf(y, lambdaAway) * tau(x,y,lambdaHome,lambdaAway,RHO);
+      if(p < 0) p = 0;
+      rowArr.push(p);
+      total += p;
+    }
+    matrix.push(rowArr);
+  }
+  for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++) matrix[x][y] /= total;
+
+  let pHome=0, pDraw=0, pAway=0, over25=0, btts=0;
+  const scores = [];
+  for(let x=0;x<=MAXG;x++){
+    for(let y=0;y<=MAXG;y++){
+      const p = matrix[x][y];
+      if(x>y) pHome += p; else if(x===y) pDraw += p; else pAway += p;
+      if(x+y > 2.5) over25 += p;
+      if(x>0 && y>0) btts += p;
+      scores.push({x,y,p});
+    }
+  }
+  scores.sort((a,b)=>b.p-a.p);
+
+  document.getElementById('rHomeName').textContent = hRow ? hRow.team_name : '—';
+  document.getElementById('rAwayName').textContent = aRow ? aRow.team_name : '—';
+  document.getElementById('expScore').textContent = lambdaHome.toFixed(2) + ' — ' + lambdaAway.toFixed(2);
+
+  document.getElementById('pHome').textContent = (pHome*100).toFixed(1)+'%';
+  document.getElementById('pDraw').textContent = (pDraw*100).toFixed(1)+'%';
+  document.getElementById('pAway').textContent = (pAway*100).toFixed(1)+'%';
+  document.getElementById('pHomeBar').style.width = (pHome*100)+'%';
+  document.getElementById('pDrawBar').style.width = (pDraw*100)+'%';
+  document.getElementById('pAwayBar').style.width = (pAway*100)+'%';
+
+  document.getElementById('over25').textContent = (over25*100).toFixed(1)+'%';
+  document.getElementById('under25').textContent = ((1-over25)*100).toFixed(1)+'%';
+  document.getElementById('btts').textContent = (btts*100).toFixed(1)+'%';
+  document.getElementById('nobtts').textContent = ((1-btts)*100).toFixed(1)+'%';
+
+  const list = document.getElementById('topScores');
+  list.innerHTML = '';
+  scores.slice(0,5).forEach(s=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${s.x} — ${s.y}</span><span>${(s.p*100).toFixed(1)}%</span>`;
+    list.appendChild(li);
+  });
+
+  const table = document.getElementById('matrix');
+  table.innerHTML = '';
+  const DISPLAY_MAX = 5;
+  const maxP = Math.max(...matrix.flat());
+  const headRow = document.createElement('tr');
+  headRow.innerHTML = '<th></th>' + Array.from({length:DISPLAY_MAX+1},(_,y)=>`<th>${y}</th>`).join('');
+  table.appendChild(headRow);
+  for(let x=0;x<=DISPLAY_MAX;x++){
+    const tr = document.createElement('tr');
+    let cells = `<th>${x}</th>`;
+    for(let y=0;y<=DISPLAY_MAX;y++){
+      const p = matrix[x][y];
+      const alpha = Math.min(0.9, p/maxP);
+      cells += `<td style="background: rgba(226,184,76,${alpha.toFixed(2)})">${(p*100).toFixed(1)}</td>`;
+    }
+    tr.innerHTML = cells;
+    table.appendChild(tr);
+  }
+
+  document.getElementById('results').classList.remove('hidden');
+}
+
+document.getElementById('runBtn').addEventListener('click', computeAndRender);
+loadData();
+</script>
+</body>
+</html>
