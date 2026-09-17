@@ -98,9 +98,10 @@
         <tr>
           <th>Tarih</th><th>Lig</th><th>Maç</th><th>En Olası Skor</th>
           <th>Ev%</th><th>Ber%</th><th>Dep%</th><th>En Olası Sonuç</th><th>2.5Ü%</th><th>KGV%</th>
+          <th>Piyasa (E/B/D)</th><th>Edge</th>
         </tr>
       </thead>
-      <tbody id="couponBody"><tr><td colspan="10" style="color:var(--muted2);">Tarih aralığı seçip "Maçları Listele"ye bas.</td></tr></tbody>
+      <tbody id="couponBody"><tr><td colspan="12" style="color:var(--muted2);">Tarih aralığı seçip "Maçları Listele"ye bas.</td></tr></tbody>
     </table>
   </div>
 
@@ -257,7 +258,7 @@ document.getElementById('listBtn').addEventListener('click', async () => {
   LAST_COUPON = [];
 
   if(!fixtures || fixtures.length === 0){
-    body.innerHTML = '<tr><td colspan="10" style="color:var(--muted2);">Bu tarih aralığında maç bulunamadı.</td></tr>';
+    body.innerHTML = '<tr><td colspan="12" style="color:var(--muted2);">Bu tarih aralığında maç bulunamadı.</td></tr>';
     statusEl.textContent = 'Hazır.';
     document.getElementById('saveAllBtn').disabled = true;
     return;
@@ -299,12 +300,48 @@ document.getElementById('listBtn').addEventListener('click', async () => {
       <td class="pick">${pickLabel}</td>
       <td>${(result.over25*100).toFixed(0)}%</td>
       <td>${(result.btts*100).toFixed(0)}%</td>
+      <td id="mkt-${f.id}" style="color:var(--muted2);">—</td>
+      <td id="edge-${f.id}" style="color:var(--muted2);">—</td>
     `;
     body.appendChild(tr);
   });
 
-  statusEl.textContent = `${LAST_COUPON.length} maç hesaplandı.`;
+  statusEl.textContent = `${LAST_COUPON.length} maç hesaplandı. Piyasa oranları kontrol ediliyor…`;
   document.getElementById('saveAllBtn').disabled = LAST_COUPON.length === 0;
+
+  // Piyasa oranlarını toplu çek ve ilgili hücreleri doldur
+  if(LAST_COUPON.length > 0){
+    const matchIds = LAST_COUPON.map(c => c.match_id);
+    const { data: snapshots } = await sb.from('odds_snapshots').select('*').in('match_id', matchIds);
+    (snapshots||[]).forEach(snap => {
+      const coupon = LAST_COUPON.find(c => c.match_id === snap.match_id);
+      if(!coupon) return;
+      const mktCell = document.getElementById('mkt-' + snap.match_id);
+      const edgeCell = document.getElementById('edge-' + snap.match_id);
+      if(mktCell){
+        mktCell.style.color = '';
+        mktCell.textContent = `${(snap.market_home_novig*100).toFixed(0)}/${(snap.market_draw_novig*100).toFixed(0)}/${(snap.market_away_novig*100).toFixed(0)}`;
+      }
+      if(edgeCell){
+        const diffs = [
+          { label: 'Ev', edge: (coupon.p_home - snap.market_home_novig)*100 },
+          { label: 'Ber', edge: (coupon.p_draw - snap.market_draw_novig)*100 },
+          { label: 'Dep', edge: (coupon.p_away - snap.market_away_novig)*100 },
+        ];
+        diffs.sort((a,b)=>b.edge-a.edge);
+        const best = diffs[0];
+        if(best.edge >= 5){
+          edgeCell.style.color = 'var(--accent)';
+          edgeCell.style.fontWeight = '600';
+          edgeCell.textContent = `+${best.edge.toFixed(0)} ${best.label}`;
+        } else {
+          edgeCell.style.color = 'var(--muted2)';
+          edgeCell.textContent = `${best.edge>=0?'+':''}${best.edge.toFixed(0)} ${best.label}`;
+        }
+      }
+    });
+  }
+  statusEl.textContent = `${LAST_COUPON.length} maç hesaplandı.`;
 });
 
 document.getElementById('saveAllBtn').addEventListener('click', async () => {
