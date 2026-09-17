@@ -235,6 +235,12 @@
       <button class="run" id="saveBtn">Tahmini Kaydet (Doğrulama İçin)</button>
       <div class="hint" id="saveStatus" style="margin-top:10px; margin-bottom:0;"></div>
     </div>
+
+    <div class="panel" id="marketPanel" style="margin-top:16px; display:none;">
+      <h2>Piyasa Karşılaştırması</h2>
+      <div id="marketBody"></div>
+      <div class="hint" style="margin-top:10px; margin-bottom:0;">Piyasa oranları DraftKings/FanDuel ortalaması, vig'den arındırılmış (no-vig). Bu sadece gerçek fikstürden seçilen maçlarda görünür ve <code>fetch-odds</code> fonksiyonunun bu maç için veri bulmuş olmasını gerektirir.</div>
+    </div>
   </div>
 
   <div class="note" id="noteBox">
@@ -508,6 +514,7 @@ function computeAndRender(){
     matchDate: document.getElementById('matchDate').value,
   };
   document.getElementById('saveStatus').textContent = '';
+  loadMarketComparison(pHome, pDraw, pAway);
 
   document.getElementById('rHomeName').textContent = hRow ? hRow.team_name : '—';
   document.getElementById('rAwayName').textContent = aRow ? aRow.team_name : '—';
@@ -553,6 +560,37 @@ function computeAndRender(){
   }
 
   document.getElementById('results').classList.remove('hidden');
+}
+
+async function loadMarketComparison(pHome, pDraw, pAway){
+  const panel = document.getElementById('marketPanel');
+  const body = document.getElementById('marketBody');
+  if(!SELECTED_MATCH_ID){ panel.style.display = 'none'; return; }
+
+  const { data, error } = await sb.from('odds_snapshots').select('*').eq('match_id', SELECTED_MATCH_ID).maybeSingle();
+  if(error || !data){ panel.style.display = 'none'; return; }
+
+  const rows = [
+    { label: 'Ev Sahibi', model: pHome, market: data.market_home_novig },
+    { label: 'Beraberlik', model: pDraw, market: data.market_draw_novig },
+    { label: 'Deplasman', model: pAway, market: data.market_away_novig },
+  ];
+
+  let html = '<table class="matrix" style="width:100%;"><tr><th></th><th>Model</th><th>Piyasa</th><th>Fark</th></tr>';
+  let bestEdge = -999, bestLabel = '';
+  rows.forEach(r => {
+    const edge = (r.model - r.market) * 100;
+    if(edge > bestEdge){ bestEdge = edge; bestLabel = r.label; }
+    const edgeColor = edge >= 5 ? 'var(--green,#6fbf73)' : (edge <= -5 ? 'var(--red)' : 'var(--muted)');
+    html += `<tr><td style="text-align:left;">${r.label}</td><td>${(r.model*100).toFixed(1)}%</td><td>${(r.market*100).toFixed(1)}%</td><td style="color:${edgeColor}; font-weight:600;">${edge>=0?'+':''}${edge.toFixed(1)}</td></tr>`;
+  });
+  html += '</table>';
+  if(bestEdge >= 5){
+    html += `<div style="margin-top:10px; font-size:0.8rem; color: var(--accent); font-weight:600;">Model, "${bestLabel}" sonucunu piyasadan ${bestEdge.toFixed(1)} puan daha olası görüyor.</div>`;
+  }
+  html += `<div style="margin-top:6px; font-size:0.68rem; color:var(--muted2);">Kaynak: ${data.sportsbooks} — ${new Date(data.fetched_at).toLocaleString('tr-TR')}</div>`;
+  body.innerHTML = html;
+  panel.style.display = 'block';
 }
 
 document.getElementById('runBtn').addEventListener('click', computeAndRender);
