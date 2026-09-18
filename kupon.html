@@ -6,81 +6,43 @@
 <title>Hafta Sonu Kuponu — Maç Tahmin Motoru</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<style>
-  :root{
-    --bg: #0f2318; --bg2: #143024; --panel: #17342a; --ink: #f2efe4;
-    --muted: #a9c2ae; --muted2: #7c9787; --accent: #e2b84c; --accent-ink: #241a05;
-    --red: #c25b52; --green: #6fbf73; --line: rgba(242,239,228,0.14); --line-strong: rgba(242,239,228,0.28);
-  }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
-      --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
-      --red: #a5443c; --green: #2f7d38; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
-    }
-  }
-  :root[data-theme="light"]{
-    --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
-    --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
-    --red: #a5443c; --green: #2f7d38; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
-  }
-  *{ box-sizing: border-box; }
-  body{
-    margin:0; background: radial-gradient(ellipse at top, var(--bg2), var(--bg) 60%);
-    color: var(--ink); font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    min-height: 100vh; padding: 28px 16px 64px;
-  }
-  .wrap{ max-width: 1100px; margin: 0 auto; }
-  .masthead{ display:flex; align-items:baseline; justify-content:space-between; border-bottom: 1px solid var(--line-strong); padding-bottom: 14px; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; }
-  .masthead h1{ font-family:'Oswald', sans-serif; font-weight:600; letter-spacing:0.02em; font-size: clamp(1.4rem, 4vw, 2rem); margin:0; }
-  .masthead .sub{ color: var(--muted); font-size: 0.8rem; }
-  .masthead .sub a{ color: var(--accent); }
-  .status-line{ font-size: 0.72rem; color: var(--muted2); margin-bottom: 18px; }
-
-  .panel{ background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
-  label{ display:block; font-size:0.72rem; color: var(--muted); margin-bottom:4px; }
-  input[type=date], select{
-    background: var(--bg); border: 1px solid var(--line-strong); color: var(--ink);
-    border-radius: 4px; padding: 8px 10px; font-family: inherit; font-size: 0.85rem;
-  }
-  .controls{ display:flex; gap: 14px; flex-wrap: wrap; align-items:flex-end; }
-  .controls > div{ min-width: 160px; }
-
-  button{
-    background: var(--accent); color: var(--accent-ink); border:none;
-    border-radius: 4px; padding: 10px 18px; font-family:'Oswald',sans-serif; font-weight:600;
-    font-size: 0.85rem; letter-spacing: 0.02em; cursor:pointer;
-  }
-  button:disabled{ opacity:0.5; cursor: not-allowed; }
-  button.secondary{ background: transparent; border: 1px solid var(--line-strong); color: var(--ink); }
-
-  .table-wrap{ overflow-x:auto; background: var(--panel); border:1px solid var(--line); border-radius:6px; padding: 6px; }
-  table.coupon{ width:100%; border-collapse: collapse; font-size: 0.76rem; }
-  table.coupon th, table.coupon td{ text-align:left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  table.coupon th{ color: var(--muted); font-weight:500; font-family:'Oswald',sans-serif; font-size:0.68rem; letter-spacing:0.02em; }
-  table.coupon tbody tr:hover{ background: rgba(242,239,228,0.03); }
-  .pick{ font-weight:600; color: var(--accent); }
-  .save-row{ display:flex; justify-content:space-between; align-items:center; margin-top: 14px; flex-wrap:wrap; gap:10px; }
-  .note{ margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.7rem; color: var(--muted2); line-height:1.6; }
-</style>
 </head>
 <body>
-<div class="wrap">
-  <div class="masthead">
-    <h1>Hafta Sonu Kuponu</h1>
-    <div class="sub"><a href="index.html">← Tek Maç Görünümü</a> · <a href="dogrulama.html">Doğrulama Paneli</a></div>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html" class="active">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html">Doğrulama Paneli</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Tarih aralığı seç</li>
+      <li>Maçları Listele'ye bas</li>
+      <li>Piyasa sütununda öne çıkan (turuncu) farklara bak</li>
+      <li>Beğendiklerini toplu kaydet</li>
+    </ol>
   </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Hafta Sonu Kuponu</h1>
+  <p class="page-sub">Seçtiğin tarih aralığındaki tüm maçlar tek seferde hesaplanır</p>
   <div class="status-line" id="statusText">Yükleniyor…</div>
 
   <div class="panel controls">
     <div>
-      <label for="startDate">Başlangıç Tarihi</label>
+      <label for="startDate">Başlangıç</label>
       <input type="date" id="startDate">
     </div>
     <div>
-      <label for="endDate">Bitiş Tarihi</label>
+      <label for="endDate">Bitiş</label>
       <input type="date" id="endDate">
     </div>
     <div>
@@ -88,32 +50,32 @@
       <select id="compFilter"><option value="">Tümü</option></select>
     </div>
     <div>
-      <button id="listBtn">Maçları Listele</button>
+      <button id="listBtn" disabled>Maçları Listele</button>
     </div>
   </div>
 
   <div class="table-wrap">
-    <table class="coupon">
+    <table class="datatable">
       <thead>
         <tr>
-          <th>Tarih</th><th>Lig</th><th>Maç</th><th>En Olası Skor</th>
-          <th>Ev%</th><th>Ber%</th><th>Dep%</th><th>En Olası Sonuç</th><th>2.5Ü%</th><th>KGV%</th>
-          <th>Piyasa (E/B/D)</th><th>Edge</th>
+          <th>Tarih</th><th>Lig</th><th>Maç</th><th>En olası skor</th>
+          <th>Ev%</th><th>Ber%</th><th>Dep%</th><th>En olası sonuç</th><th>2.5Ü%</th><th>KGV%</th>
+          <th>Piyasa (E/B/D)</th><th>Fark</th>
         </tr>
       </thead>
       <tbody id="couponBody"><tr><td colspan="12" style="color:var(--muted2);">Tarih aralığı seçip "Maçları Listele"ye bas.</td></tr></tbody>
     </table>
   </div>
 
-  <div class="save-row">
-    <button id="saveAllBtn" class="secondary" disabled>Tümünü Doğrulama Sistemine Kaydet</button>
-    <span id="saveAllStatus" style="font-size:0.72rem; color: var(--muted2);"></span>
+  <div class="panel" style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <button class="secondary" id="saveAllBtn" disabled>Tümünü Doğrulama Sistemine Kaydet</button>
+    <span id="saveAllStatus" style="font-size:0.74rem; color: var(--muted2);"></span>
   </div>
 
   <div class="note">
-    Bu görünüm, her maç için ana sayfadakiyle birebir aynı modeli (rakip-gücü-ayarlı katsayılar + yorgunluk düzeltmesi) kullanır, sadece hepsini tek seferde hesaplar. "En Olası" sütunu modelin en yüksek olasılık verdiği sonuçtur — kesinlik garantisi değildir. Bahis kararlarını yalnızca bu modele dayandırma.
+    Her maç, Tek Maç sayfasıyla birebir aynı modeli kullanır. "En olası sonuç" modelin en yüksek olasılık verdiği sonuçtur — kesinlik garantisi değildir. "Fark" sütunu modelin piyasadan en çok ayrıştığı sonucu gösterir; turuncu olanlar 5 puanın üzerinde. Bahis kararlarını yalnızca bu modele dayandırma.
   </div>
-</div>
+</main>
 
 <script>
 const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
@@ -121,11 +83,10 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const statusEl = document.getElementById('statusText');
-let RATINGS = {};       // "teamId::compId" -> rating row
-let FINISHED_MATCHES = []; // {home_team_id, away_team_id, utc_date}
-let LAST_COUPON = [];   // hesaplanan sonuçlar (kaydetmek için)
+let RATINGS = {};
+let FINISHED_MATCHES = [];
+let LAST_COUPON = [];
 
-// varsayılan tarih aralığı: bugünden +4 gün (tipik bir hafta sonu penceresi)
 const today = new Date();
 const in4days = new Date(Date.now() + 4*24*60*60*1000);
 document.getElementById('startDate').value = today.toISOString().slice(0,10);
@@ -152,7 +113,7 @@ async function init(){
       sel.appendChild(o);
     });
 
-    statusEl.textContent = `Hazır — ${Object.keys(RATINGS).length} takım katsayısı, ${FINISHED_MATCHES.length} geçmiş maç yüklendi.`;
+    statusEl.textContent = `Hazır — ${Object.keys(RATINGS).length} takım, ${FINISHED_MATCHES.length} geçmiş maç.`;
     document.getElementById('listBtn').disabled = false;
   }catch(err){
     console.error(err);
@@ -160,7 +121,6 @@ async function init(){
   }
 }
 
-// Bir takımın belirli bir tarihten önceki son (FINISHED) maçını bellekten bulur
 function findLastMatchDate(teamId, beforeDate){
   let best = null;
   FINISHED_MATCHES.forEach(m => {
@@ -267,7 +227,7 @@ document.getElementById('listBtn').addEventListener('click', async () => {
   fixtures.forEach(f => {
     const hRating = RATINGS[f.home_team_id + '::' + f.competition_id];
     const aRating = RATINGS[f.away_team_id + '::' + f.competition_id];
-    if(!hRating || !aRating) return; // katsayısı olmayan takım, atla
+    if(!hRating || !aRating) return;
 
     const matchDate = new Date(f.utc_date);
     const result = computeMatch(hRating, aRating, matchDate);
@@ -297,7 +257,7 @@ document.getElementById('listBtn').addEventListener('click', async () => {
       <td>${(result.pHome*100).toFixed(0)}%</td>
       <td>${(result.pDraw*100).toFixed(0)}%</td>
       <td>${(result.pAway*100).toFixed(0)}%</td>
-      <td class="pick">${pickLabel}</td>
+      <td style="color:var(--accent); font-weight:600;">${pickLabel}</td>
       <td>${(result.over25*100).toFixed(0)}%</td>
       <td>${(result.btts*100).toFixed(0)}%</td>
       <td id="mkt-${f.id}" style="color:var(--muted2);">—</td>
@@ -309,7 +269,6 @@ document.getElementById('listBtn').addEventListener('click', async () => {
   statusEl.textContent = `${LAST_COUPON.length} maç hesaplandı. Piyasa oranları kontrol ediliyor…`;
   document.getElementById('saveAllBtn').disabled = LAST_COUPON.length === 0;
 
-  // Piyasa oranlarını toplu çek ve ilgili hücreleri doldur
   if(LAST_COUPON.length > 0){
     const matchIds = LAST_COUPON.map(c => c.match_id);
     const { data: snapshots } = await sb.from('odds_snapshots').select('*').in('match_id', matchIds);
@@ -349,7 +308,6 @@ document.getElementById('saveAllBtn').addEventListener('click', async () => {
   if(LAST_COUPON.length === 0) return;
   saveStatus.textContent = 'Kaydediliyor…';
   try{
-    // Zaten kaydedilmiş (aynı match_id'ye sahip) tahminleri tekrar eklememek için kontrol et
     const matchIds = LAST_COUPON.map(c => c.match_id);
     const { data: existing } = await sb.from('predictions').select('match_id').in('match_id', matchIds);
     const existingIds = new Set((existing||[]).map(e => e.match_id));
@@ -368,7 +326,6 @@ document.getElementById('saveAllBtn').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('listBtn').disabled = true;
 init();
 </script>
 </body>
