@@ -6,90 +6,57 @@
 <title>Doğrulama Paneli — Maç Tahmin Motoru</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<style>
-  :root{
-    --bg: #0f2318; --bg2: #143024; --panel: #17342a; --ink: #f2efe4;
-    --muted: #a9c2ae; --muted2: #7c9787; --accent: #e2b84c; --accent-ink: #241a05;
-    --red: #c25b52; --green: #6fbf73; --line: rgba(242,239,228,0.14); --line-strong: rgba(242,239,228,0.28);
-  }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
-      --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
-      --red: #a5443c; --green: #2f7d38; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
-    }
-  }
-  :root[data-theme="light"]{
-    --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
-    --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
-    --red: #a5443c; --green: #2f7d38; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
-  }
-  *{ box-sizing: border-box; }
-  body{
-    margin:0; background: radial-gradient(ellipse at top, var(--bg2), var(--bg) 60%);
-    color: var(--ink); font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    min-height: 100vh; padding: 28px 16px 64px;
-  }
-  .wrap{ max-width: 1000px; margin: 0 auto; }
-  .masthead{ display:flex; align-items:baseline; justify-content:space-between; border-bottom: 1px solid var(--line-strong); padding-bottom: 14px; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; }
-  .masthead h1{ font-family:'Oswald', sans-serif; font-weight:600; letter-spacing:0.02em; font-size: clamp(1.4rem, 4vw, 2rem); margin:0; }
-  .masthead .sub{ color: var(--muted); font-size: 0.8rem; }
-  .status-line{ font-size: 0.72rem; color: var(--muted2); margin-bottom: 22px; }
-
-  .summary-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
-  @media (max-width: 700px){ .summary-grid{ grid-template-columns: repeat(2, 1fr); } }
-  .stat-card{ background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; text-align:center; }
-  .stat-card .num{ font-family:'Oswald',sans-serif; font-size: 1.8rem; font-weight:600; color: var(--accent); }
-  .stat-card .lbl{ font-size: 0.68rem; color: var(--muted); margin-top: 4px; letter-spacing: 0.02em; }
-
-  table.predlist{ width:100%; border-collapse: collapse; font-size: 0.78rem; }
-  table.predlist th, table.predlist td{ text-align:left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  table.predlist th{ color: var(--muted); font-weight:500; font-family:'Oswald',sans-serif; font-size:0.7rem; letter-spacing:0.02em; }
-  table.predlist tbody tr:hover{ background: rgba(242,239,228,0.03); }
-  .pill{ display:inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; font-weight:600; }
-  .pill.ok{ background: rgba(111,191,115,0.18); color: var(--green); }
-  .pill.bad{ background: rgba(194,91,82,0.18); color: var(--red); }
-  .pill.pending{ background: rgba(169,194,174,0.14); color: var(--muted); }
-  .table-wrap{ overflow-x:auto; background: var(--panel); border:1px solid var(--line); border-radius:6px; padding: 6px; }
-
-  .note{ margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.7rem; color: var(--muted2); line-height:1.6; }
-  a{ color: var(--accent); }
-</style>
 </head>
 <body>
-<div class="wrap">
-  <div class="masthead">
-    <h1>Doğrulama Paneli</h1>
-    <div class="sub">Kayıtlı tahminler vs gerçek sonuçlar</div>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html" class="active">Doğrulama Paneli</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Kaydettiğin tahminler burada listelenir</li>
+      <li>Maç bitip <code>fetch-matches</code> çalışınca otomatik puanlanır</li>
+      <li>İsabet oranı ve Brier skoruna zamanla bak</li>
+    </ol>
   </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Doğrulama Paneli</h1>
+  <p class="page-sub">Kaydettiğin tahminler ile gerçek sonuçların karşılaştırması</p>
   <div class="status-line" id="statusText">Yükleniyor…</div>
 
   <div class="summary-grid">
-    <div class="stat-card"><div class="num" id="statTotal">—</div><div class="lbl">TOPLAM TAHMİN</div></div>
-    <div class="stat-card"><div class="num" id="statScored">—</div><div class="lbl">SONUÇLANAN</div></div>
-    <div class="stat-card"><div class="num" id="statAccuracy">—</div><div class="lbl">İSABET ORANI (1X2)</div></div>
-    <div class="stat-card"><div class="num" id="statBrier">—</div><div class="lbl">ORT. BRIER SKORU</div></div>
+    <div class="stat-card"><div class="num" id="statTotal">—</div><div class="lbl">Toplam tahmin</div></div>
+    <div class="stat-card"><div class="num" id="statScored">—</div><div class="lbl">Sonuçlanan</div></div>
+    <div class="stat-card"><div class="num" id="statAccuracy">—</div><div class="lbl">İsabet oranı (1X2)</div></div>
+    <div class="stat-card"><div class="num" id="statBrier">—</div><div class="lbl">Ort. Brier skoru</div></div>
   </div>
 
   <div class="table-wrap">
-    <table class="predlist">
+    <table class="datatable">
       <thead>
-        <tr>
-          <th>Tarih</th><th>Maç</th><th>Tahmin (1X2)</th><th>Gerçek Skor</th><th>Sonuç</th><th>Brier</th>
-        </tr>
+        <tr><th>Tarih</th><th>Maç</th><th>Tahmin (E/B/D)</th><th>Gerçek skor</th><th>Sonuç</th><th>Brier</th></tr>
       </thead>
       <tbody id="predBody"></tbody>
     </table>
   </div>
 
   <div class="note">
-    <strong>İsabet oranı:</strong> modelin en yüksek olasılık verdiği sonucun (ev/berabere/deplasman) gerçekleşme yüzdesi.<br>
-    <strong>Brier skoru:</strong> olasılık tahmininin ne kadar "kalibre" olduğunu ölçer — 0 mükemmel, 2 en kötü olası tahmin. 0.60-0.67 civarı, hep aynı olasılıkları verme (ör. her maça %33-%33-%33) ile elde edilen "bilgisiz" referans seviyesidir; model bunun altında kalıyorsa gerçek bir sinyal üretiyor demektir.<br>
-    Sadece <a href="index.html">gerçek fikstürden seçilip</a> kaydedilen tahminler otomatik puanlanır. Az sayıda tahmin varken bu istatistikler istatistiksel olarak güvenilir değildir — en az 20-30 sonuçlanmış tahmin birikene kadar yorumlarken temkinli ol.
+    <strong>İsabet oranı:</strong> modelin en yüksek olasılık verdiği sonucun gerçekleşme yüzdesi.<br>
+    <strong>Brier skoru:</strong> olasılık tahmininin ne kadar kalibre olduğunu ölçer — 0 mükemmel, 2 en kötü. 0.60-0.67 civarı, her maça %33/33/33 deme ("bilgisiz" tahmin) ile elde edilen referans seviyesidir; model bunun altında kalıyorsa gerçek bir sinyal üretiyor demektir.<br>
+    Sadece gerçek fikstürden seçilip kaydedilen tahminler otomatik puanlanır. En az 20-30 sonuçlanmış tahmin birikene kadar bu sayılara çok güvenme.
   </div>
-</div>
+</main>
 
 <script>
 const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
@@ -122,12 +89,12 @@ async function load(){
       let resultCell;
       if(r.status === 'FINISHED'){
         const cls = r.predicted_correctly ? 'ok' : 'bad';
-        const label = r.predicted_correctly ? 'İsabetli' : 'Isabetsiz';
+        const label = r.predicted_correctly ? 'İsabetli' : 'İsabetsiz';
         resultCell = `<span class="pill ${cls}">${label}</span>`;
       } else {
         resultCell = `<span class="pill pending">Bekliyor</span>`;
       }
-      const scoreStr = r.status === 'FINISHED' ? `${r.home_score} — ${r.away_score}` : '—';
+      const scoreStr = r.status === 'FINISHED' ? `${r.home_score} – ${r.away_score}` : '—';
       const brierStr = r.brier_score != null ? Number(r.brier_score).toFixed(3) : '—';
       tr.innerHTML = `
         <td>${r.match_date}</td>
