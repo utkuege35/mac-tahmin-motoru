@@ -3,212 +3,117 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Maç Tahmin Motoru — Dixon-Coles</title>
+<title>Maç Tahmin Motoru</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<style>
-  :root{
-    --bg: #0f2318;
-    --bg2: #143024;
-    --panel: #17342a;
-    --ink: #f2efe4;
-    --muted: #a9c2ae;
-    --muted2: #7c9787;
-    --accent: #e2b84c;
-    --accent-ink: #241a05;
-    --red: #c25b52;
-    --line: rgba(242,239,228,0.14);
-    --line-strong: rgba(242,239,228,0.28);
-  }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
-      --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
-      --red: #a5443c; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
-    }
-  }
-  :root[data-theme="light"]{
-    --bg: #f4f1e6; --bg2: #ece7d6; --panel: #fbf9f1; --ink: #1c2a20;
-    --muted: #4e5d52; --muted2: #6c7b70; --accent: #b8860f; --accent-ink: #fff8e6;
-    --red: #a5443c; --line: rgba(28,42,32,0.14); --line-strong: rgba(28,42,32,0.28);
-  }
-
-  *{ box-sizing: border-box; }
-  html,body{ margin:0; padding:0; }
-  body{
-    background: radial-gradient(ellipse at top, var(--bg2), var(--bg) 60%);
-    color: var(--ink);
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    min-height: 100vh;
-    padding: 28px 16px 64px;
-  }
-  .wrap{ max-width: 920px; margin: 0 auto; }
-
-  .masthead{
-    display:flex; align-items:baseline; justify-content:space-between;
-    border-bottom: 1px solid var(--line-strong);
-    padding-bottom: 14px; margin-bottom: 22px; gap: 12px; flex-wrap: wrap;
-  }
-  .masthead h1{
-    font-family:'Oswald', sans-serif; font-weight:600; letter-spacing:0.02em;
-    font-size: clamp(1.5rem, 4vw, 2.1rem); margin:0; color: var(--ink);
-  }
-  .masthead .sub{ color: var(--muted); font-size: 0.8rem; }
-
-  .status-line{
-    font-size: 0.72rem; color: var(--muted2); margin-bottom: 18px;
-    display:flex; align-items:center; gap:8px;
-  }
-  .status-dot{ width:7px; height:7px; border-radius:50%; background: var(--muted2); }
-  .status-dot.ok{ background:#6fbf73; }
-  .status-dot.err{ background: var(--red); }
-
-  .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 640px){ .grid{ grid-template-columns: 1fr; } }
-
-  .panel{ background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px; }
-  .panel h2{ font-family:'Oswald', sans-serif; font-weight:500; font-size: 1rem; margin: 0 0 14px; color: var(--accent); letter-spacing: 0.02em; }
-
-  label{ display:block; font-size:0.72rem; color: var(--muted); margin-bottom:4px; }
-  select, input[type=number]{
-    width:100%; background: var(--bg); border: 1px solid var(--line-strong);
-    color: var(--ink); border-radius: 4px; padding: 9px 10px; font-family: inherit;
-    font-size: 0.9rem; margin-bottom: 12px;
-  }
-  select:disabled{ opacity: 0.5; }
-  select:focus, input:focus{ outline: 2px solid var(--accent); outline-offset: 1px; }
-
-  .row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .hint{ font-size: 0.68rem; color: var(--muted2); margin-top:-8px; margin-bottom:12px; line-height:1.4; }
-
-  button.run{
-    width:100%; background: var(--accent); color: var(--accent-ink); border:none;
-    border-radius: 4px; padding: 12px; font-family:'Oswald',sans-serif; font-weight:600;
-    font-size: 0.95rem; letter-spacing: 0.03em; cursor:pointer; margin-top: 4px;
-  }
-  button.run:hover{ filter: brightness(1.06); }
-  button.run:disabled{ opacity:0.5; cursor: not-allowed; }
-
-  .results{ margin-top: 22px; } .results.hidden{ display:none; }
-  .scoreline{ display:flex; align-items:center; justify-content:center; gap: 18px; padding: 18px 0 22px; border-bottom: 1px dashed var(--line-strong); margin-bottom: 18px; }
-  .teamname{ font-family:'Oswald', sans-serif; font-size: 1rem; font-weight:500; text-align:center; max-width:200px; }
-  .vs{ color: var(--muted2); font-size: 0.8rem; }
-
-  .prob-bars{ display:flex; gap: 10px; margin-bottom: 22px; }
-  .prob-bar{ flex:1; text-align:center; }
-  .prob-bar .pct{ font-family:'Oswald',sans-serif; font-size: 1.6rem; font-weight:600; }
-  .prob-bar .lbl{ font-size: 0.68rem; color: var(--muted); margin-top:2px; letter-spacing:0.03em; }
-  .prob-bar .bar-track{ height: 5px; background: var(--bg); border-radius: 3px; margin-top:8px; overflow:hidden; }
-  .prob-bar .bar-fill{ height:100%; background: var(--accent); }
-  .prob-bar.away .bar-fill{ background: var(--red); }
-  .prob-bar.draw .bar-fill{ background: var(--muted2); }
-
-  .subgrid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
-  @media (max-width: 640px){ .subgrid{ grid-template-columns: 1fr; } }
-
-  .stat-line{ display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.82rem; }
-  .stat-line span:last-child{ color: var(--accent); font-weight:600; }
-
-  table.matrix{ border-collapse: collapse; width:100%; font-size: 0.72rem; }
-  table.matrix th, table.matrix td{ text-align:center; padding: 5px 3px; border: 1px solid var(--line); }
-  table.matrix th{ color: var(--muted); font-weight:500; font-family:'Oswald',sans-serif; }
-
-  .scorelist{ list-style:none; margin:0; padding:0; }
-  .scorelist li{ display:flex; justify-content:space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 0.82rem; }
-  .scorelist li span:last-child{ color: var(--accent); }
-
-  .note{ margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.7rem; color: var(--muted2); line-height:1.6; }
-
-  .played-badge{ font-size:0.62rem; color: var(--muted2); margin-top:-10px; margin-bottom:12px; }
-</style>
 </head>
 <body>
-<div class="wrap">
 
-  <div class="masthead">
-    <h1>Maç Tahmin Motoru</h1>
-    <div class="sub">Dixon–Coles Poisson modeli — canlı veri · <a href="kupon.html" style="color: var(--accent);">Hafta Sonu Kuponu →</a> · <a href="dogrulama.html" style="color: var(--accent);">Doğrulama Paneli →</a></div>
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html" class="active">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html">Doğrulama Paneli</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Yaklaşan bir maç seç (ya da takımları elle seç)</li>
+      <li>Hesapla'ya bas, olasılıkları gör</li>
+      <li>İstersen tahmini kaydet</li>
+      <li>Maç bitince Doğrulama Paneli'nde sonucu gör</li>
+    </ol>
   </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
 
-  <div class="status-line"><div class="status-dot" id="statusDot"></div><span id="statusText">Supabase'e bağlanılıyor…</span></div>
+<main class="main">
+  <h1 class="page-title">Tek Maç</h1>
+  <p class="page-sub">Rakip gücüne göre ayarlı Dixon–Coles Poisson modeli</p>
 
-  <div class="panel" style="margin-bottom:16px;">
-    <label for="fixtureSelect">Yaklaşan Gerçek Fikstürden Seç (opsiyonel — doğrulama için önerilir)</label>
-    <select id="fixtureSelect"><option value="">— Serbest seçim (takımları elle seç aşağıdan) —</option></select>
-    <div class="hint" style="margin-bottom:0;">Gerçek bir fikstür seçersen, maç oynandıktan sonra tahminin otomatik puanlanır. Serbest seçimde bu mümkün olmaz.</div>
-  </div>
+  <div class="status-line"><div class="status-dot" id="statusDot"></div><span id="statusText">Bağlanılıyor…</span></div>
 
-  <div class="panel" style="margin-bottom:16px;">
-    <label for="matchDate">Maç Tarihi (yorgunluk hesaplaması için)</label>
-    <input type="date" id="matchDate">
-    <div class="hint" style="margin-bottom:0;">Her takımın bu tarihten önceki son maçına göre dinlenme günü hesaplanır.</div>
-  </div>
+  <div class="panel">
+    <h2>Maç Seç</h2>
+    <label for="fixtureSelect">Yaklaşan bir fikstürden seç</label>
+    <select id="fixtureSelect"><option value="">— Serbest seçim —</option></select>
+    <div class="hint">Gerçek fikstür seçersen, maç bitince tahmin otomatik puanlanır.</div>
 
-  <div class="grid">
-    <div class="panel">
-      <h2>Ev Sahibi</h2>
-      <label for="homeTeam">Takım</label>
-      <select id="homeTeam" disabled><option>Yükleniyor…</option></select>
-      <div class="row2">
-        <div>
-          <label for="homeGF">Hücum Gücü (lig ort. = 1.00)</label>
-          <input type="number" id="homeGF" step="0.01" min="0">
-        </div>
-        <div>
-          <label for="homeGA">Savunma Gücü (lig ort. = 1.00, düşük=iyi)</label>
-          <input type="number" id="homeGA" step="0.01" min="0">
-        </div>
+    <div class="row2">
+      <div>
+        <label for="homeTeam">Ev Sahibi</label>
+        <select id="homeTeam" disabled><option>Yükleniyor…</option></select>
       </div>
-      <div class="played-badge" id="homePlayed"></div>
-      <div class="hint">Değerler, tüm ligdeki maçlar rakip gücüne göre ağırlıklandırılarak otomatik hesaplandı. Sakat/cezalı oyuncu gibi etkenler için elle düzeltebilirsin.</div>
+      <div>
+        <label for="awayTeam">Deplasman</label>
+        <select id="awayTeam" disabled><option>Yükleniyor…</option></select>
+      </div>
     </div>
 
-    <div class="panel">
-      <h2>Deplasman</h2>
-      <label for="awayTeam">Takım</label>
-      <select id="awayTeam" disabled><option>Yükleniyor…</option></select>
-      <div class="row2">
-        <div>
-          <label for="awayGF">Hücum Gücü (lig ort. = 1.00)</label>
-          <input type="number" id="awayGF" step="0.01" min="0">
+    <details class="advanced">
+      <summary>Gelişmiş — gücü elle düzelt, maç tarihi</summary>
+      <div class="advanced-body">
+        <label for="matchDate">Maç Tarihi (yorgunluk hesabı için)</label>
+        <input type="date" id="matchDate">
+
+        <div class="row2" style="margin-top:8px;">
+          <div>
+            <label for="homeGF">Ev — Hücum Gücü (lig ort.=1.00)</label>
+            <input type="number" id="homeGF" step="0.01" min="0">
+          </div>
+          <div>
+            <label for="homeGA">Ev — Savunma Gücü (düşük=iyi)</label>
+            <input type="number" id="homeGA" step="0.01" min="0">
+          </div>
         </div>
-        <div>
-          <label for="awayGA">Savunma Gücü (lig ort. = 1.00, düşük=iyi)</label>
-          <input type="number" id="awayGA" step="0.01" min="0">
+        <div class="hint" id="homePlayed"></div>
+
+        <div class="row2">
+          <div>
+            <label for="awayGF">Deplasman — Hücum Gücü</label>
+            <input type="number" id="awayGF" step="0.01" min="0">
+          </div>
+          <div>
+            <label for="awayGA">Deplasman — Savunma Gücü</label>
+            <input type="number" id="awayGA" step="0.01" min="0">
+          </div>
         </div>
+        <div class="hint" id="awayPlayed" style="margin-bottom:0;"></div>
       </div>
-      <div class="played-badge" id="awayPlayed"></div>
-      <div class="hint">Değerler, tüm ligdeki maçlar rakip gücüne göre ağırlıklandırılarak otomatik hesaplandı. Sakat/cezalı oyuncu gibi etkenler için elle düzeltebilirsin.</div>
-    </div>
+    </details>
   </div>
 
-  <button class="run" id="runBtn" disabled>Olasılıkları Hesapla</button>
+  <button class="full" id="runBtn" disabled>Hesapla</button>
 
   <div class="results hidden" id="results">
-    <div class="scoreline">
-      <div class="teamname" id="rHomeName">—</div>
-      <div class="vs">beklenen skor</div>
-      <div class="teamname" id="rAwayName">—</div>
-    </div>
-    <div style="text-align:center; margin-top:-14px; margin-bottom:20px; font-family:'Oswald',sans-serif; font-size:2rem; font-weight:600;" id="expScore">0.0 — 0.0</div>
+    <div class="panel" style="margin-top:16px;">
+      <div class="scoreline">
+        <div class="teamname" id="rHomeName">—</div>
+        <div class="vs">vs</div>
+        <div class="teamname" id="rAwayName">—</div>
+      </div>
+      <div style="text-align:center; margin-top:-8px; margin-bottom:18px; font-size:1.8rem; font-weight:700; font-variant-numeric: tabular-nums;" id="expScore">—</div>
 
-    <div class="prob-bars">
-      <div class="prob-bar home">
-        <div class="pct" id="pHome">—</div>
-        <div class="lbl">EV SAHİBİ KAZANIR</div>
-        <div class="bar-track"><div class="bar-fill" id="pHomeBar" style="width:0%"></div></div>
-      </div>
-      <div class="prob-bar draw">
-        <div class="pct" id="pDraw">—</div>
-        <div class="lbl">BERABERE</div>
-        <div class="bar-track"><div class="bar-fill" id="pDrawBar" style="width:0%"></div></div>
-      </div>
-      <div class="prob-bar away">
-        <div class="pct" id="pAway">—</div>
-        <div class="lbl">DEPLASMAN KAZANIR</div>
-        <div class="bar-track"><div class="bar-fill" id="pAwayBar" style="width:0%"></div></div>
+      <div class="prob-bars">
+        <div class="prob-bar home">
+          <div class="pct" id="pHome">—</div>
+          <div class="lbl">Ev sahibi kazanır</div>
+          <div class="bar-track"><div class="bar-fill" id="pHomeBar" style="width:0%"></div></div>
+        </div>
+        <div class="prob-bar draw">
+          <div class="pct" id="pDraw">—</div>
+          <div class="lbl">Beraberlik</div>
+          <div class="bar-track"><div class="bar-fill" id="pDrawBar" style="width:0%"></div></div>
+        </div>
+        <div class="prob-bar away">
+          <div class="pct" id="pAway">—</div>
+          <div class="lbl">Deplasman kazanır</div>
+          <div class="bar-track"><div class="bar-fill" id="pAwayBar" style="width:0%"></div></div>
+        </div>
       </div>
     </div>
 
@@ -217,8 +122,8 @@
         <h2>Ek Piyasalar</h2>
         <div class="stat-line"><span>2.5 Üst</span><span id="over25">—</span></div>
         <div class="stat-line"><span>2.5 Alt</span><span id="under25">—</span></div>
-        <div class="stat-line"><span>Karşılıklı Gol Var (KG Var)</span><span id="btts">—</span></div>
-        <div class="stat-line"><span>Karşılıklı Gol Yok (KG Yok)</span><span id="nobtts">—</span></div>
+        <div class="stat-line"><span>Karşılıklı gol var</span><span id="btts">—</span></div>
+        <div class="stat-line"><span>Karşılıklı gol yok</span><span id="nobtts">—</span></div>
       </div>
       <div class="panel">
         <h2>En Olası 5 Skor</h2>
@@ -231,38 +136,33 @@
       <div style="overflow-x:auto;"><table class="matrix" id="matrix"></table></div>
     </div>
 
-    <div class="panel" style="margin-top:16px;">
-      <button class="run" id="saveBtn">Tahmini Kaydet (Doğrulama İçin)</button>
+    <div class="panel">
+      <button class="full" id="saveBtn">Tahmini Kaydet</button>
       <div class="hint" id="saveStatus" style="margin-top:10px; margin-bottom:0;"></div>
     </div>
 
-    <div class="panel" id="marketPanel" style="margin-top:16px; display:none;">
+    <div class="panel" id="marketPanel" style="display:none;">
       <h2>Piyasa Karşılaştırması</h2>
       <div id="marketBody"></div>
-      <div class="hint" style="margin-top:10px; margin-bottom:0;">Piyasa oranları DraftKings/FanDuel ortalaması, vig'den arındırılmış (no-vig). Bu sadece gerçek fikstürden seçilen maçlarda görünür ve <code>fetch-odds</code> fonksiyonunun bu maç için veri bulmuş olmasını gerektirir.</div>
+      <div class="hint" style="margin-top:10px; margin-bottom:0;">DraftKings/FanDuel ortalaması, vig'den arındırılmış.</div>
+    </div>
+
+    <div class="note">
+      Sezon başında az maçlı takımlar için katsayı lig ortalamasına çekilir. Sakatlık/ceza durumu otomatik değil — gerekirse "Gelişmiş" bölümünden katsayıları elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
     </div>
   </div>
-
-  <div class="note" id="noteBox">
-    Bu araç, tüm ligdeki maçları rakip gücüne göre ağırlıklandırarak (iteratif uyum) hesaplanan hücum/savunma katsayılarıyla Dixon–Coles düzeltmeli Poisson dağılımı üretir. Az maçlı takımlar için katsayı lig ortalamasına (1.00) doğru çekilir. Seçtiğin maç tarihine göre her takımın son maçından bu yana geçen gün sayısı hesaplanıp yorgunluk düzeltmesi (sezgisel, ampirik fit edilmemiş) uygulanır. Sakatlık/ceza durumu henüz otomatik değil — gerekirse katsayıları elle düzelt. Bahis kararlarını yalnızca bu modele dayandırma.
-  </div>
-
-</div>
+</main>
 
 <script>
-// ---- Supabase bağlantısı ----
-// anon key tasarım gereği herkese açık kullanım için güvenlidir (RLS ile korunuyor).
 const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
-
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let TEAM_STATS = [];   // team_ratings_full view satırları (rakip gücüne göre ayarlı)
+let TEAM_STATS = [];
 
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 
-// Bugünün tarihini varsayılan maç tarihi olarak koy
 document.getElementById('matchDate').value = new Date().toISOString().slice(0,10);
 
 function setStatus(kind, text){
@@ -271,19 +171,16 @@ function setStatus(kind, text){
 }
 
 async function loadData(){
-  setStatus('', 'Supabase\'e bağlanılıyor…');
+  setStatus('', 'Bağlanılıyor…');
   try{
     const { data: teamRows, error: e1 } = await sb.from('team_ratings_full').select('*');
     if(e1) throw e1;
-
     TEAM_STATS = teamRows || [];
-
     if(TEAM_STATS.length === 0){
-      setStatus('err', 'Veri bulunamadı — henüz katsayı hesaplanmamış olabilir (compute-ratings çalıştırıldı mı?).');
+      setStatus('err', 'Veri bulunamadı — compute-ratings çalıştırıldı mı?');
       return;
     }
-
-    setStatus('ok', `Bağlandı — ${TEAM_STATS.length} takım için rakip-gücü-ayarlı katsayılar yüklendi.`);
+    setStatus('ok', `${TEAM_STATS.length} takım için katsayılar yüklü.`);
     populateSelects();
     document.getElementById('runBtn').disabled = false;
     loadFixtures();
@@ -294,6 +191,7 @@ async function loadData(){
 }
 
 let FIXTURES = [];
+let SELECTED_MATCH_ID = null;
 
 async function loadFixtures(){
   try{
@@ -302,7 +200,7 @@ async function loadFixtures(){
     const { data, error } = await sb
       .from('matches')
       .select('id, competition_id, home_team_id, away_team_id, utc_date')
-      .in('status', ['SCHEDULED', 'TIMED'])
+      .in('status', ['SCHEDULED','TIMED'])
       .gte('utc_date', nowISO)
       .lte('utc_date', in21Days)
       .order('utc_date', { ascending: true })
@@ -311,11 +209,11 @@ async function loadFixtures(){
     FIXTURES = data || [];
 
     const sel = document.getElementById('fixtureSelect');
-    sel.innerHTML = '<option value="">— Serbest seçim (takımları elle seç aşağıdan) —</option>';
+    sel.innerHTML = '<option value="">— Serbest seçim —</option>';
     FIXTURES.forEach((f, idx) => {
       const homeRow = TEAM_STATS.find(r => r.team_id === f.home_team_id);
       const awayRow = TEAM_STATS.find(r => r.team_id === f.away_team_id);
-      if(!homeRow || !awayRow) return; // katsayısı olmayan takım (nadiren) atlanır
+      if(!homeRow || !awayRow) return;
       const dateStr = new Date(f.utc_date).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' });
       const o = document.createElement('option');
       o.value = idx;
@@ -339,15 +237,12 @@ document.getElementById('fixtureSelect').addEventListener('change', (e) => {
   fillStats();
 });
 
-let SELECTED_MATCH_ID = null;
-
 function populateSelects(){
   const homeSel = document.getElementById('homeTeam');
   const awaySel = document.getElementById('awayTeam');
   homeSel.innerHTML = '';
   awaySel.innerHTML = '';
 
-  // Lige göre grupla (optgroup)
   const byComp = {};
   TEAM_STATS.forEach(row => {
     if(!byComp[row.competition_name]) byComp[row.competition_name] = [];
@@ -371,7 +266,6 @@ function populateSelects(){
     sel.disabled = false;
   });
 
-  // varsayılan seçim: ilk iki farklı takım
   if(TEAM_STATS.length > 1){
     homeSel.selectedIndex = 0;
     awaySel.selectedIndex = 1;
@@ -384,13 +278,9 @@ function findTeamRow(value){
   return TEAM_STATS.find(r => r.team_id === teamId && r.competition_id === compId);
 }
 
-// ---- Yorgunluk / dinlenme günü düzeltmesi ----
-// Not: ampirik olarak fit edilmiş bir katsayı değil, futbol analitiğinde
-// yaygın kabul gören kaba bir sezgisel düzeltme (3 günden az dinlenme
-// belirgin, 4-5 gün hafif performans düşüşüyle ilişkilendirilir).
 function fatigueAdjust(restDays){
   if(restDays == null) return { attackMult: 1, defenseMult: 1, label: 'bilinmiyor (ilk maç)' };
-  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08, label: `${restDays} gün dinlenme — yorgunluk düzeltmesi uygulandı` };
+  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08, label: `${restDays} gün dinlenme — yorgunluk düzeltmesi` };
   if(restDays <= 5) return { attackMult: 0.96, defenseMult: 1.04, label: `${restDays} gün dinlenme — hafif düzeltme` };
   return { attackMult: 1, defenseMult: 1, label: `${restDays} gün dinlenme — düzeltme yok` };
 }
@@ -406,12 +296,12 @@ async function getRestDays(teamId, beforeDateISO){
   if(error || !data || data.length === 0) return null;
   const lastDate = new Date(data[0].utc_date);
   const matchDate = new Date(beforeDateISO);
-  const diffMs = matchDate - lastDate;
-  return Math.max(0, Math.round(diffMs / (1000*60*60*24)));
+  return Math.max(0, Math.round((matchDate-lastDate)/(1000*60*60*24)));
 }
 
 let homeFatigue = { attackMult:1, defenseMult:1, label:'' };
 let awayFatigue = { attackMult:1, defenseMult:1, label:'' };
+const SHRINK_K_DISPLAY = 8;
 
 async function fillStats(){
   const homeVal = document.getElementById('homeTeam').value;
@@ -441,13 +331,11 @@ async function fillStats(){
   document.getElementById('homePlayed').textContent = `${h.matches_played} maçlık veri — ${homeConf} — ${homeFatigue.label}`;
   document.getElementById('awayPlayed').textContent = `${a.matches_played} maçlık veri — ${awayConf} — ${awayFatigue.label}`;
 }
-const SHRINK_K_DISPLAY = 8;
 
 document.getElementById('homeTeam').addEventListener('change', () => { SELECTED_MATCH_ID = null; document.getElementById('fixtureSelect').value=''; fillStats(); });
 document.getElementById('awayTeam').addEventListener('change', () => { SELECTED_MATCH_ID = null; document.getElementById('fixtureSelect').value=''; fillStats(); });
 document.getElementById('matchDate').addEventListener('change', fillStats);
 
-// ---- Poisson + Dixon-Coles ----
 function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
 function factorial(n){ let r=1; for(let i=2;i<=n;i++) r*=i; return r; }
 function tau(x, y, lambdaH, lambdaA, rho){
@@ -467,8 +355,6 @@ function computeAndRender(){
   const hRow = findTeamRow(homeVal);
   const aRow = findTeamRow(awayVal);
 
-  // Bu katsayılar artık lig ortalamasına değil, TÜM ligdeki maçlar rakip
-  // gücüne göre ağırlıklandırılarak (iteratif uyum) hesaplandı.
   const attackHome = (parseFloat(document.getElementById('homeGF').value) || 1) * homeFatigue.attackMult;
   const defenseHome = (parseFloat(document.getElementById('homeGA').value) || 1) * homeFatigue.defenseMult;
   const attackAway = (parseFloat(document.getElementById('awayGF').value) || 1) * awayFatigue.attackMult;
@@ -476,8 +362,6 @@ function computeAndRender(){
 
   const homeAdv = (hRow && hRow.home_adv) ? Number(hRow.home_adv) : 1.3;
 
-  // mu_home = attack_ev * defense_deplasman * ev_avantajı
-  // mu_away = attack_deplasman * defense_ev
   const lambdaHome = Math.max(0.05, attackHome * defenseAway * homeAdv);
   const lambdaAway = Math.max(0.05, attackAway * defenseHome);
 
@@ -508,7 +392,6 @@ function computeAndRender(){
   }
   scores.sort((a,b)=>b.p-a.p);
 
-  // Kaydet butonu için son hesaplanan sonucu sakla
   LAST_RESULT = {
     hRow, aRow, pHome, pDraw, pAway, lambdaHome, lambdaAway,
     matchDate: document.getElementById('matchDate').value,
@@ -518,7 +401,7 @@ function computeAndRender(){
 
   document.getElementById('rHomeName').textContent = hRow ? hRow.team_name : '—';
   document.getElementById('rAwayName').textContent = aRow ? aRow.team_name : '—';
-  document.getElementById('expScore').textContent = lambdaHome.toFixed(2) + ' — ' + lambdaAway.toFixed(2);
+  document.getElementById('expScore').textContent = lambdaHome.toFixed(2) + ' – ' + lambdaAway.toFixed(2);
 
   document.getElementById('pHome').textContent = (pHome*100).toFixed(1)+'%';
   document.getElementById('pDraw').textContent = (pDraw*100).toFixed(1)+'%';
@@ -536,7 +419,7 @@ function computeAndRender(){
   list.innerHTML = '';
   scores.slice(0,5).forEach(s=>{
     const li = document.createElement('li');
-    li.innerHTML = `<span>${s.x} — ${s.y}</span><span>${(s.p*100).toFixed(1)}%</span>`;
+    li.innerHTML = `<span>${s.x} – ${s.y}</span><span>${(s.p*100).toFixed(1)}%</span>`;
     list.appendChild(li);
   });
 
@@ -552,8 +435,8 @@ function computeAndRender(){
     let cells = `<th>${x}</th>`;
     for(let y=0;y<=DISPLAY_MAX;y++){
       const p = matrix[x][y];
-      const alpha = Math.min(0.9, p/maxP);
-      cells += `<td style="background: rgba(226,184,76,${alpha.toFixed(2)})">${(p*100).toFixed(1)}</td>`;
+      const alpha = Math.min(0.85, p/maxP);
+      cells += `<td style="background: rgba(201,138,59,${alpha.toFixed(2)})">${(p*100).toFixed(1)}</td>`;
     }
     tr.innerHTML = cells;
     table.appendChild(tr);
@@ -581,7 +464,7 @@ async function loadMarketComparison(pHome, pDraw, pAway){
   rows.forEach(r => {
     const edge = (r.model - r.market) * 100;
     if(edge > bestEdge){ bestEdge = edge; bestLabel = r.label; }
-    const edgeColor = edge >= 5 ? 'var(--green,#6fbf73)' : (edge <= -5 ? 'var(--red)' : 'var(--muted)');
+    const edgeColor = edge >= 5 ? 'var(--green)' : (edge <= -5 ? 'var(--red)' : 'var(--muted)');
     html += `<tr><td style="text-align:left;">${r.label}</td><td>${(r.model*100).toFixed(1)}%</td><td>${(r.market*100).toFixed(1)}%</td><td style="color:${edgeColor}; font-weight:600;">${edge>=0?'+':''}${edge.toFixed(1)}</td></tr>`;
   });
   html += '</table>';
@@ -597,7 +480,7 @@ document.getElementById('runBtn').addEventListener('click', computeAndRender);
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
   if(!LAST_RESULT || !LAST_RESULT.hRow || !LAST_RESULT.aRow){
-    document.getElementById('saveStatus').textContent = 'Önce "Olasılıkları Hesapla" butonuna bas.';
+    document.getElementById('saveStatus').textContent = 'Önce Hesapla\'ya bas.';
     return;
   }
   const r = LAST_RESULT;
@@ -610,19 +493,16 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
       away_team_id: r.aRow.team_id,
       competition_id: r.hRow.competition_id,
       match_date: r.matchDate,
-      p_home: r.pHome,
-      p_draw: r.pDraw,
-      p_away: r.pAway,
-      lambda_home: r.lambdaHome,
-      lambda_away: r.lambdaAway,
+      p_home: r.pHome, p_draw: r.pDraw, p_away: r.pAway,
+      lambda_home: r.lambdaHome, lambda_away: r.lambdaAway,
     });
     if(error) throw error;
     statusEl.textContent = SELECTED_MATCH_ID
-      ? 'Kaydedildi — gerçek fikstürle eşleşti, maç bitince otomatik puanlanacak.'
-      : 'Kaydedildi — ancak gerçek fikstürle eşleşmedi, otomatik puanlanamayacak (serbest seçimdi).';
+      ? 'Kaydedildi — maç bitince otomatik puanlanacak.'
+      : 'Kaydedildi — serbest seçimdi, otomatik puanlanamaz.';
   }catch(err){
     console.error(err);
-    statusEl.textContent = 'Kaydetme hatası: ' + (err.message || err);
+    statusEl.textContent = 'Hata: ' + (err.message || err);
   }
 });
 
