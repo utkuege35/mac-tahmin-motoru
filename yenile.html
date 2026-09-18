@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verileri Güncelle — Maç Tahmin Motoru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .log{
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px; font-family: ui-monospace, monospace; font-size: 0.8rem;
+    min-height: 160px; white-space: pre-wrap; line-height: 1.6;
+  }
+  .log .ok{ color: var(--green); }
+  .log .err{ color: var(--red); }
+  .log .muted{ color: var(--muted2); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html">Doğrulama Paneli</a>
+    <a href="yenile.html" class="active">Verileri Güncelle</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Arka planda zaten otomatik çalışıyor (birkaç saatte bir)</li>
+      <li>Hemen şimdi güncel veri istiyorsan buradan tetikle</li>
+      <li>Sırayla üç adım tamamlanır, ~1 dakika sürer</li>
+    </ol>
+  </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Verileri Güncelle</h1>
+  <p class="page-sub">Maç sonuçlarını, katsayıları ve piyasa oranlarını şimdi çek</p>
+
+  <div class="panel">
+    <button class="full" id="runBtn">Verileri Şimdi Güncelle</button>
+    <div class="log" id="log" style="margin-top:16px;">Hazır. Yaklaşık 1 dakika sürer (fetch-matches en uzun adım).</div>
+  </div>
+
+  <div class="note">
+    Bu sayfa üç adımı sırayla çalıştırır: önce maç sonuçları, sonra takım katsayıları,
+    sonra piyasa oranları. Arka planda zaten otomatik (birkaç saatte bir) çalışıyor —
+    bu sayfa sadece beklemeden hemen güncel veri istediğinde işine yarar.
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+
+const logEl = document.getElementById('log');
+const runBtn = document.getElementById('runBtn');
+
+function log(text, cls){
+  const line = document.createElement('div');
+  if(cls) line.className = cls;
+  line.textContent = text;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function callFunction(name){
+  const t0 = Date.now();
+  log(`${name} çalışıyor…`, 'muted');
+  try{
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' },
+    });
+    const json = await resp.json();
+    const secs = ((Date.now()-t0)/1000).toFixed(0);
+    if(!resp.ok || json.ok === false){
+      log(`${name} hata (${secs}sn): ${json.error || resp.status}`, 'err');
+      return false;
+    }
+    log(`${name} tamamlandı (${secs}sn): ${JSON.stringify(json.summary || json)}`, 'ok');
+    return true;
+  }catch(err){
+    log(`${name} hata: ${err.message || err}`, 'err');
+    return false;
+  }
+}
+
+runBtn.addEventListener('click', async () => {
+  runBtn.disabled = true;
+  logEl.innerHTML = '';
+  log('Güncelleme başladı…');
+  await callFunction('fetch-matches');
+  await callFunction('compute-ratings');
+  await callFunction('fetch-odds');
+  log('Bitti. Diğer sayfaları yenileyip güncel veriyi görebilirsin.', 'ok');
+  runBtn.disabled = false;
+});
+</script>
+</body>
+</html>
