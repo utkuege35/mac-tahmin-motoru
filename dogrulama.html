@@ -19,7 +19,6 @@
     <a href="kupon.html">Hafta Sonu Kuponu</a>
     <a href="dogrulama.html" class="active">Doğrulama Paneli</a>
     <a href="istatistikler.html">İstatistikler</a>
-    <a href="oneriler.html">Önerilen Bahisler</a>
     <a href="yenile.html">Verileri Güncelle</a>
   </nav>
   <div class="guide">
@@ -59,6 +58,29 @@
     <strong>Brier skoru:</strong> olasılık tahmininin ne kadar kalibre olduğunu ölçer — 0 mükemmel, 2 en kötü. 0.60-0.67 civarı, her maça %33/33/33 deme ("bilgisiz" tahmin) ile elde edilen referans seviyesidir; model bunun altında kalıyorsa gerçek bir sinyal üretiyor demektir.<br>
     Sadece gerçek fikstürden seçilip kaydedilen tahminler otomatik puanlanır. En az 20-30 sonuçlanmış tahmin birikene kadar bu sayılara çok güvenme.
   </div>
+
+  <h2 style="font-size:1.1rem; font-weight:700; margin:32px 0 6px;">Önerilen Bahis Sonuçları</h2>
+  <p class="page-sub" style="margin-bottom:14px;">Önerilen Bahisler sayfasından kaydettiğin seçeneklerin gerçekleşme durumu</p>
+  <div class="status-line" id="recStatusText">Yükleniyor…</div>
+
+  <div class="summary-grid">
+    <div class="stat-card"><div class="num" id="recStatTotal">—</div><div class="lbl">Toplam öneri</div></div>
+    <div class="stat-card"><div class="num" id="recStatScored">—</div><div class="lbl">Sonuçlanan</div></div>
+    <div class="stat-card"><div class="num" id="recStatHitRate">—</div><div class="lbl">Gerçekleşme oranı</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="datatable">
+      <thead>
+        <tr><th>Tarih / Saat</th><th>Maç</th><th>Seçenek</th><th>Model %</th><th>Sonuç</th></tr>
+      </thead>
+      <tbody id="recResultsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    Bu tablo, Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" butonuna bastığında kaydedilen seçeneklerin sonradan gerçekleşip gerçekleşmediğini gösterir. "Gerçekleşme oranı", modelin önerdiği seçeneklerin ne sıklıkla doğru çıktığını özetler — bu, modelin gerçek pratik değerinin en somut göstergesi.
+  </div>
 </main>
 
 <script>
@@ -84,20 +106,38 @@ async function load(){
     document.getElementById('statAccuracy').textContent = scored.length > 0 ? `${(correct.length/scored.length*100).toFixed(0)}%` : '—';
     document.getElementById('statBrier').textContent = avgBrier != null ? avgBrier.toFixed(3) : '—';
 
+// ---- Canlı / devam eden maç göstergesi (tahmini, gerçek zamanlı değil) ----
+function liveMatchInfo(utcDateStr, status){
+  if(status === 'FINISHED') return { label: null, live:false };
+  const kickoff = new Date(utcDateStr);
+  const now = new Date();
+  if(kickoff > now) return { label: null, live:false };
+  if(status === 'POSTPONED' || status === 'CANCELLED' || status === 'SUSPENDED') return { label: 'İptal/Ertelendi', live:false };
+
+  const elapsedMin = Math.floor((now-kickoff)/60000);
+  if(status === 'PAUSED' || (elapsedMin > 45 && elapsedMin <= 60)) return { label: 'Devre Arası', live:true };
+  if(elapsedMin <= 45) return { label: `Canlı ~${elapsedMin}' (tahmini)`, live:true };
+  if(elapsedMin <= 110) return { label: `Canlı ~${elapsedMin-15}' (tahmini)`, live:true };
+  return { label: 'Muhtemelen bitti (veri güncel değil)', live:true };
+}
+
     const body = document.getElementById('predBody');
     body.innerHTML = '';
     rows.forEach(r => {
       const tr = document.createElement('tr');
       const pctStr = `${(r.p_home*100).toFixed(0)}/${(r.p_draw*100).toFixed(0)}/${(r.p_away*100).toFixed(0)}`;
       let resultCell;
+      const live = r.utc_date ? liveMatchInfo(r.utc_date, r.status) : { live:false };
       if(r.status === 'FINISHED'){
         const cls = r.predicted_correctly ? 'ok' : 'bad';
         const label = r.predicted_correctly ? 'İsabetli' : 'İsabetsiz';
         resultCell = `<span class="pill ${cls}">${label}</span>`;
+      } else if(live.live){
+        resultCell = `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
       } else {
         resultCell = `<span class="pill pending">Bekliyor</span>`;
       }
-      const scoreStr = r.status === 'FINISHED' ? `${r.home_score} – ${r.away_score}` : '—';
+      const scoreStr = r.status === 'FINISHED' ? `${r.home_score} – ${r.away_score}` : (live.live ? `${r.home_score ?? '?'} – ${r.away_score ?? '?'}` : '—');
       const brierStr = r.brier_score != null ? Number(r.brier_score).toFixed(3) : '—';
       tr.innerHTML = `
         <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : r.match_date}</td>
@@ -116,7 +156,54 @@ async function load(){
     statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
   }
 }
+
+async function loadRecommendations(){
+  const recStatusEl = document.getElementById('recStatusText');
+  try{
+    const { data, error } = await sb.from('market_recommendation_results').select('*').limit(500);
+    if(error) throw error;
+
+    const rows = data || [];
+    const scored = rows.filter(r => r.status === 'FINISHED');
+    const hits = scored.filter(r => r.hit === true);
+
+    document.getElementById('recStatTotal').textContent = rows.length;
+    document.getElementById('recStatScored').textContent = scored.length;
+    document.getElementById('recStatHitRate').textContent = scored.length > 0 ? `${(hits.length/scored.length*100).toFixed(0)}%` : '—';
+
+    const body = document.getElementById('recResultsBody');
+    body.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      const live = r.utc_date ? liveMatchInfo(r.utc_date, r.status) : { live:false };
+      let resultCell;
+      if(r.status === 'FINISHED'){
+        const cls = r.hit ? 'ok' : 'bad';
+        const label = r.hit ? 'Gerçekleşti' : 'Gerçekleşmedi';
+        resultCell = `<span class="pill ${cls}">${label}</span>`;
+      } else if(live.live){
+        resultCell = `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
+      } else {
+        resultCell = `<span class="pill pending">Bekliyor</span>`;
+      }
+      tr.innerHTML = `
+        <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—'}</td>
+        <td>${r.home_team_name} - ${r.away_team_name}</td>
+        <td>${r.market_label}</td>
+        <td style="color:var(--accent); font-weight:600;">${(r.model_pct*100).toFixed(1)}%</td>
+        <td>${resultCell}</td>
+      `;
+      body.appendChild(tr);
+    });
+
+    recStatusEl.textContent = `${rows.length} öneri yüklendi.`;
+  }catch(err){
+    console.error(err);
+    recStatusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
+  }
+}
 load();
+loadRecommendations();
 </script>
 </body>
 </html>
