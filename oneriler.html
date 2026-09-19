@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Önerilen Bahisler — Maç Tahmin Motoru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .rank-badge{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%; background: var(--panel-hover);
+    color: var(--muted); font-size:0.7rem; font-weight:700;
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html">Doğrulama Paneli</a>
+    <a href="istatistikler.html">İstatistikler</a>
+    <a href="oneriler.html" class="active">Önerilen Bahisler</a>
+    <a href="yenile.html">Verileri Güncelle</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Tarih aralığındaki tüm maçlar + tüm piyasalar hesaplanır</li>
+      <li>Her biri, o ligin genel ortalamasıyla karşılaştırılır</li>
+      <li>Modelin en yüksek olasılık verdiği 12 seçenek listelenir</li>
+    </ol>
+  </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Önerilen Bahisler</h1>
+  <p class="page-sub">Takım bazlı model + genel lig istatistiği bir arada</p>
+  <div class="status-line" id="statusText">Yükleniyor…</div>
+
+  <div class="panel controls" style="margin-bottom:20px;">
+    <div>
+      <label for="startDate">Başlangıç</label>
+      <input type="date" id="startDate">
+    </div>
+    <div>
+      <label for="endDate">Bitiş</label>
+      <input type="date" id="endDate">
+    </div>
+    <div>
+      <button id="runBtn" disabled>Önerileri Getir</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="datatable">
+      <thead>
+        <tr><th>#</th><th>Tarih</th><th>Maç</th><th>Seçenek</th><th>Model</th><th>Lig Ort.</th><th>Fark</th></tr>
+      </thead>
+      <tbody id="recBody"><tr><td colspan="7" style="color:var(--muted2);">Tarih aralığı seçip "Önerileri Getir"e bas.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>Model:</strong> bu spesifik iki takımın rakip-gücü-ayarlı katsayılarından hesaplanan olasılık.<br>
+    <strong>Lig Ort.:</strong> o ligde bu sezon aynı seçeneğin genel gerçekleşme sıklığı (takımdan bağımsız).<br>
+    <strong>Fark:</strong> modelin bu maça özel verdiği olasılığın lig ortalamasından ne kadar yüksek/düşük olduğu — büyük pozitif fark, bu maçın o seçenek için ligin geneline göre "olağan dışı" uygun olduğunu gösterir.<br><br>
+    Liste, modelin en yüksek olasılık verdiği seçeneklere göre sıralanır (yalnızca %55 ve üzeri gösterilir). Bu bir garanti değil, istatistiksel bir referans noktasıdır — kendi bildiğin güncel haberlerle (sakatlık, form) çapraz kontrol et. Bahis kararlarını yalnızca bu modele dayandırma.
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const statusEl = document.getElementById('statusText');
+let RATINGS = {};
+let FINISHED_MATCHES = [];   // fatigue hesap için (tarih)
+let FINISHED_FOR_BASELINE = []; // baseline istatistik için (skorlar)
+let BASELINE = {}; // competition_id -> { marketKey: pct }
+
+const today = new Date();
+const in7days = new Date(Date.now() + 7*24*60*60*1000);
+document.getElementById('startDate').value = today.toISOString().slice(0,10);
+document.getElementById('endDate').value = in7days.toISOString().slice(0,10);
+
+async function init(){
+  statusEl.textContent = 'Veriler yükleniyor…';
+  try{
+    const [{ data: ratingRows, error: e1 }, { data: finishedRows, error: e2 }] = await Promise.all([
+      sb.from('team_ratings_full').select('*'),
+      sb.from('matches').select('competition_id, home_team_id, away_team_id, utc_date, home_score, away_score, home_ht_score, away_ht_score').eq('status','FINISHED'),
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+
+    (ratingRows||[]).forEach(r => { RATINGS[r.team_id + '::' + r.competition_id] = r; });
+    FINISHED_MATCHES = finishedRows || [];
+    FINISHED_FOR_BASELINE = finishedRows || [];
+    computeBaselines();
+
+    statusEl.textContent = `Hazır — ${Object.keys(RATINGS).length} takım, ${FINISHED_MATCHES.length} geçmiş maç.`;
+    document.getElementById('runBtn').disabled = false;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
+  }
+}
+
+// ---- Genel (takımdan bağımsız) lig istatistikleri ----
+function computeBaselines(){
+  const byComp = {};
+  FINISHED_FOR_BASELINE.forEach(m => {
+    const key = m.competition_id;
+    if(!byComp[key]) byComp[key] = [];
+    byComp[key].push(m);
+  });
+
+  Object.keys(byComp).forEach(compId => {
+    const matches = byComp[compId];
+    const withFT = matches.filter(m => m.home_score != null && m.away_score != null);
+    const withHT = matches.filter(m => m.home_ht_score != null && m.away_ht_score != null);
+
+    function pct(pool, predicate){
+      if(pool.length === 0) return null;
+      return pool.filter(predicate).length / pool.length;
+    }
+
+    BASELINE[compId] = {
+      home: pct(withFT, m => m.home_score > m.away_score),
+      draw: pct(withFT, m => m.home_score === m.away_score),
+      away: pct(withFT, m => m.home_score < m.away_score),
+      over15: pct(withFT, m => (m.home_score+m.away_score) > 1.5),
+      under15: pct(withFT, m => (m.home_score+m.away_score) < 1.5),
+      over25: pct(withFT, m => (m.home_score+m.away_score) > 2.5),
+      under25: pct(withFT, m => (m.home_score+m.away_score) < 2.5),
+      over35: pct(withFT, m => (m.home_score+m.away_score) > 3.5),
+      under35: pct(withFT, m => (m.home_score+m.away_score) < 3.5),
+      btts: pct(withFT, m => m.home_score>0 && m.away_score>0),
+      nobtts: pct(withFT, m => m.home_score===0 || m.away_score===0),
+      htHome: pct(withHT, m => m.home_ht_score > m.away_ht_score),
+      htDraw: pct(withHT, m => m.home_ht_score === m.away_ht_score),
+      htAway: pct(withHT, m => m.home_ht_score < m.away_ht_score),
+      htOver05: pct(withHT, m => (m.home_ht_score+m.away_ht_score) > 0.5),
+      htUnder15: pct(withHT, m => (m.home_ht_score+m.away_ht_score) < 1.5),
+      htOver15: pct(withHT, m => (m.home_ht_score+m.away_ht_score) > 1.5),
+    };
+  });
+}
+
+// ---- Yorgunluk ----
+function findLastMatchDate(teamId, beforeDate){
+  let best = null;
+  FINISHED_MATCHES.forEach(m => {
+    if(m.home_team_id !== teamId && m.away_team_id !== teamId) return;
+    const d = new Date(m.utc_date);
+    if(d < beforeDate && (best === null || d > best)) best = d;
+  });
+  return best;
+}
+function fatigueAdjust(restDays){
+  if(restDays == null) return { attackMult: 1, defenseMult: 1 };
+  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08 };
+  if(restDays <= 5) return { attackMult: 0.96, defenseMult: 1.04 };
+  return { attackMult: 1, defenseMult: 1 };
+}
+
+// ---- Poisson ----
+function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
+function factorial(n){ let r=1; for(let i=2;i<=n;i++) r*=i; return r; }
+function tau(x, y, lambdaH, lambdaA, rho){
+  if(x===0 && y===0) return 1 - (lambdaH*lambdaA*rho);
+  if(x===0 && y===1) return 1 + (lambdaH*rho);
+  if(x===1 && y===0) return 1 + (lambdaA*rho);
+  if(x===1 && y===1) return 1 - rho;
+  return 1;
+}
+const RHO = -0.10;
+const MAXG = 8;
+
+function computeFTMarkets(homeRating, awayRating, hf, af){
+  const attackHome = Number(homeRating.attack) * hf.attackMult;
+  const defenseHome = Number(homeRating.defense) * hf.defenseMult;
+  const attackAway = Number(awayRating.attack) * af.attackMult;
+  const defenseAway = Number(awayRating.defense) * af.defenseMult;
+  const homeAdv = Number(homeRating.home_adv) || 1.3;
+
+  const lambdaHome = Math.max(0.05, attackHome * defenseAway * homeAdv);
+  const lambdaAway = Math.max(0.05, attackAway * defenseHome);
+
+  let total = 0;
+  for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++){
+    let p = poissonPmf(x, lambdaHome) * poissonPmf(y, lambdaAway) * tau(x,y,lambdaHome,lambdaAway,RHO);
+    if(p<0) p=0;
+    total += p;
+  }
+  const r = { home:0, draw:0, away:0, over15:0, under15:0, over25:0, under25:0, over35:0, under35:0, btts:0, nobtts:0 };
+  for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++){
+    let p = poissonPmf(x, lambdaHome) * poissonPmf(y, lambdaAway) * tau(x,y,lambdaHome,lambdaAway,RHO);
+    if(p<0) p=0;
+    p /= total;
+    if(x>y) r.home+=p; else if(x===y) r.draw+=p; else r.away+=p;
+    const tot=x+y;
+    if(tot>1.5) r.over15+=p; else r.under15+=p;
+    if(tot>2.5) r.over25+=p; else r.under25+=p;
+    if(tot>3.5) r.over35+=p; else r.under35+=p;
+    if(x>0&&y>0) r.btts+=p; else r.nobtts+=p;
+  }
+  return r;
+}
+
+function computeHTMarkets(homeRating, awayRating, hf, af){
+  if(homeRating.attack_ht == null || homeRating.defense_ht == null || awayRating.attack_ht == null || awayRating.defense_ht == null) return null;
+  const htHomeAdv = Number(homeRating.home_adv_ht) || 1.1;
+  const lambdaHomeHT = Math.max(0.02, Number(homeRating.attack_ht) * Number(awayRating.defense_ht) * htHomeAdv * hf.attackMult);
+  const lambdaAwayHT = Math.max(0.02, Number(awayRating.attack_ht) * Number(homeRating.defense_ht) * af.attackMult);
+  const maxG = 6;
+  const r = { htHome:0, htDraw:0, htAway:0, htOver05:0, htUnder15:0, htOver15:0 };
+  for(let x=0;x<=maxG;x++) for(let y=0;y<=maxG;y++){
+    const p = poissonPmf(x, lambdaHomeHT) * poissonPmf(y, lambdaAwayHT);
+    if(x>y) r.htHome+=p; else if(x===y) r.htDraw+=p; else r.htAway+=p;
+    const tot=x+y;
+    if(tot>0.5) r.htOver05+=p;
+    if(tot<1.5) r.htUnder15+=p; else r.htOver15+=p;
+  }
+  return r;
+}
+
+const MARKET_LABELS = {
+  home: 'Ev Sahibi Kazanır', draw: 'Beraberlik', away: 'Deplasman Kazanır',
+  over15: '1.5 Üst (MS)', under15: '1.5 Alt (MS)',
+  over25: '2.5 Üst (MS)', under25: '2.5 Alt (MS)',
+  over35: '3.5 Üst (MS)', under35: '3.5 Alt (MS)',
+  btts: 'Karşılıklı Gol Var', nobtts: 'Karşılıklı Gol Yok',
+  htHome: 'İlk Yarı Ev Önde', htDraw: 'İlk Yarı Beraberlik', htAway: 'İlk Yarı Deplasman Önde',
+  htOver05: 'İlk Yarı 0.5 Üst', htUnder15: 'İlk Yarı 1.5 Alt', htOver15: 'İlk Yarı 1.5 Üst',
+};
+
+document.getElementById('runBtn').addEventListener('click', async () => {
+  const startVal = document.getElementById('startDate').value;
+  const endVal = document.getElementById('endDate').value;
+  if(!startVal || !endVal) return;
+
+  statusEl.textContent = 'Maçlar hesaplanıyor…';
+  const startISO = startVal + 'T00:00:00Z';
+  const endISO = endVal + 'T23:59:59Z';
+
+  const { data: fixtures, error } = await sb.from('matches')
+    .select('id, competition_id, home_team_id, away_team_id, utc_date')
+    .in('status', ['SCHEDULED','TIMED'])
+    .gte('utc_date', startISO)
+    .lte('utc_date', endISO)
+    .order('utc_date', { ascending: true })
+    .limit(300);
+  if(error){ statusEl.textContent = 'Hata: ' + error.message; return; }
+
+  const candidates = [];
+
+  (fixtures||[]).forEach(f => {
+    const hRating = RATINGS[f.home_team_id + '::' + f.competition_id];
+    const aRating = RATINGS[f.away_team_id + '::' + f.competition_id];
+    if(!hRating || !aRating) return;
+
+    const matchDate = new Date(f.utc_date);
+    const homeRest = findLastMatchDate(f.home_team_id, matchDate);
+    const awayRest = findLastMatchDate(f.away_team_id, matchDate);
+    const hf = fatigueAdjust(homeRest ? Math.round((matchDate-homeRest)/(1000*60*60*24)) : null);
+    const af = fatigueAdjust(awayRest ? Math.round((matchDate-awayRest)/(1000*60*60*24)) : null);
+
+    const ft = computeFTMarkets(hRating, aRating, hf, af);
+    const ht = computeHTMarkets(hRating, aRating, hf, af);
+    const all = ht ? { ...ft, ...ht } : ft;
+
+    const baseline = BASELINE[f.competition_id] || {};
+    const matchLabel = `${hRating.team_name} - ${aRating.team_name}`;
+    const dateStr = matchDate.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' }) + ' ' +
+                    matchDate.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
+
+    Object.keys(all).forEach(key => {
+      const modelPct = all[key];
+      const basePct = baseline[key];
+      if(modelPct == null) return;
+      candidates.push({
+        match: matchLabel, date: dateStr, marketKey: key, marketLabel: MARKET_LABELS[key] || key,
+        modelPct, basePct: basePct == null ? null : basePct,
+      });
+    });
+  });
+
+  // Sadece %55 ve üzeri model olasılığı olanlar, modele göre sıralı
+  const filtered = candidates.filter(c => c.modelPct >= 0.55).sort((a,b) => b.modelPct - a.modelPct);
+  const top = filtered.slice(0, 12);
+
+  const body = document.getElementById('recBody');
+  body.innerHTML = '';
+  if(top.length === 0){
+    body.innerHTML = '<tr><td colspan="7" style="color:var(--muted2);">Bu tarih aralığında %55 üzeri güçlü bir seçenek bulunamadı.</td></tr>';
+  } else {
+    top.forEach((c, i) => {
+      const diff = c.basePct != null ? (c.modelPct - c.basePct) * 100 : null;
+      const diffStr = diff == null ? '—' : `${diff>=0?'+':''}${diff.toFixed(1)}`;
+      const diffColor = diff == null ? 'var(--muted2)' : (diff >= 8 ? 'var(--accent)' : (diff <= -8 ? 'var(--red)' : 'var(--muted)'));
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="rank-badge">${i+1}</span></td>
+        <td>${c.date}</td>
+        <td>${c.match}</td>
+        <td>${c.marketLabel}</td>
+        <td style="color:var(--accent); font-weight:700;">${(c.modelPct*100).toFixed(1)}%</td>
+        <td style="color:var(--muted);">${c.basePct != null ? (c.basePct*100).toFixed(1)+'%' : '—'}</td>
+        <td style="color:${diffColor}; font-weight:600;">${diffStr}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  statusEl.textContent = `${(fixtures||[]).length} maç, ${candidates.length} seçenek tarandı — en güçlü ${top.length} tanesi listelendi.`;
+});
+
+init();
+</script>
+</body>
+</html>
