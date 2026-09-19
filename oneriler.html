@@ -72,7 +72,8 @@
     <strong>Model:</strong> bu spesifik iki takımın rakip-gücü-ayarlı katsayılarından hesaplanan olasılık.<br>
     <strong>Lig Ort.:</strong> o ligde bu sezon aynı seçeneğin genel gerçekleşme sıklığı (takımdan bağımsız).<br>
     <strong>Fark:</strong> modelin bu maça özel verdiği olasılığın lig ortalamasından ne kadar yüksek/düşük olduğu — büyük pozitif fark, bu maçın o seçenek için ligin geneline göre "olağan dışı" uygun olduğunu gösterir.<br><br>
-    Liste, modelin en yüksek olasılık verdiği seçeneklere göre sıralanır (yalnızca %55 ve üzeri gösterilir). Bu bir garanti değil, istatistiksel bir referans noktasıdır — kendi bildiğin güncel haberlerle (sakatlık, form) çapraz kontrol et. Bahis kararlarını yalnızca bu modele dayandırma.
+    Liste sadece Bilyoner ve benzeri sitelerde genelde gerçek piyasası açılan seçenekleri içerir (1X2, 2.5 alt/üst, KG var/yok, çifte şans, ilk yarı seçenekleri) — neredeyse kesin (%85+) eşikler (1.5 üst, 3.5 alt gibi) hariç tutuldu çünkü bunlar için ya piyasa açılmıyor ya da oran anlamsız düşük oluyor.<br><br>
+    Modelin en yüksek olasılık verdiği seçeneklere göre sıralanır (yalnızca %55 ve üzeri gösterilir). Bu bir garanti değil, istatistiksel bir referans noktasıdır — kendi bildiğin güncel haberlerle (sakatlık, form) çapraz kontrol et. Bahis kararlarını yalnızca bu modele dayandırma.
   </div>
 </main>
 
@@ -146,6 +147,9 @@ function computeBaselines(){
       under35: pct(withFT, m => (m.home_score+m.away_score) < 3.5),
       btts: pct(withFT, m => m.home_score>0 && m.away_score>0),
       nobtts: pct(withFT, m => m.home_score===0 || m.away_score===0),
+      dc1x: pct(withFT, m => m.home_score >= m.away_score),
+      dcx2: pct(withFT, m => m.away_score >= m.home_score),
+      dc12: pct(withFT, m => m.home_score !== m.away_score),
       htHome: pct(withHT, m => m.home_ht_score > m.away_ht_score),
       htDraw: pct(withHT, m => m.home_ht_score === m.away_ht_score),
       htAway: pct(withHT, m => m.home_ht_score < m.away_ht_score),
@@ -214,6 +218,9 @@ function computeFTMarkets(homeRating, awayRating, hf, af){
     if(tot>3.5) r.over35+=p; else r.under35+=p;
     if(x>0&&y>0) r.btts+=p; else r.nobtts+=p;
   }
+  r.dc1x = r.home + r.draw;   // Çifte şans: Ev veya Beraberlik
+  r.dcx2 = r.draw + r.away;   // Çifte şans: Beraberlik veya Deplasman
+  r.dc12 = r.home + r.away;   // Çifte şans: Ev veya Deplasman (berabere hariç)
   return r;
 }
 
@@ -235,14 +242,21 @@ function computeHTMarkets(homeRating, awayRating, hf, af){
 }
 
 const MARKET_LABELS = {
-  home: 'Ev Sahibi Kazanır', draw: 'Beraberlik', away: 'Deplasman Kazanır',
-  over15: '1.5 Üst (MS)', under15: '1.5 Alt (MS)',
+  home: 'Ev Sahibi Kazanır (MS 1)', draw: 'Beraberlik (MS X)', away: 'Deplasman Kazanır (MS 2)',
   over25: '2.5 Üst (MS)', under25: '2.5 Alt (MS)',
-  over35: '3.5 Üst (MS)', under35: '3.5 Alt (MS)',
   btts: 'Karşılıklı Gol Var', nobtts: 'Karşılıklı Gol Yok',
+  dc1x: 'Çifte Şans: 1-X (Ev veya Beraberlik)',
+  dcx2: 'Çifte Şans: X-2 (Beraberlik veya Deplasman)',
+  dc12: 'Çifte Şans: 1-2 (Beraberlik Hariç)',
   htHome: 'İlk Yarı Ev Önde', htDraw: 'İlk Yarı Beraberlik', htAway: 'İlk Yarı Deplasman Önde',
-  htOver05: 'İlk Yarı 0.5 Üst', htUnder15: 'İlk Yarı 1.5 Alt', htOver15: 'İlk Yarı 1.5 Üst',
+  htOver05: 'İlk Yarı 0.5 Üst',
 };
+
+// Bilyoner ve benzeri Türkiye bahis siteler i̇nde gerçekten piyasası açılan
+// seçenekler bunlar — 1.5/3.5 gibi neredeyse kesin (%85+) eşikler genelde
+// hiç piyasaya konmuyor ya da oranı anlamsız düşük oluyor, o yüzden
+// öneri listesine dahil etmiyoruz.
+const ALLOWED_MARKETS = ['home','draw','away','over25','under25','btts','nobtts','dc1x','dcx2','dc12','htHome','htDraw','htAway','htOver05'];
 
 document.getElementById('runBtn').addEventListener('click', async () => {
   const startVal = document.getElementById('startDate').value;
@@ -285,6 +299,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
                     matchDate.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
 
     Object.keys(all).forEach(key => {
+      if(!ALLOWED_MARKETS.includes(key)) return;
       const modelPct = all[key];
       const basePct = baseline[key];
       if(modelPct == null) return;
