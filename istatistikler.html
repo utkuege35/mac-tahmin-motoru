@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>İstatistikler — Maç Tahmin Motoru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html">Doğrulama Paneli</a>
+    <a href="istatistikler.html" class="active">İstatistikler</a>
+    <a href="yenile.html">Verileri Güncelle</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Oynanmış tüm maçlar (5 lig, bu sezon) taranır</li>
+      <li>Takımdan bağımsız, hangi bahis sonucu en sık gerçekleşmiş bakılır</li>
+      <li>En sık gerçekleşen 10 seçenek sayı ve yüzdeyle listelenir</li>
+    </ol>
+  </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">İstatistikler</h1>
+  <p class="page-sub">Takımdan bağımsız — bu sezon en sık gerçekleşen sonuçlar</p>
+  <div class="status-line" id="statusText">Yükleniyor…</div>
+
+  <div class="panel controls" style="margin-bottom:20px;">
+    <div>
+      <label for="compFilter">Lig</label>
+      <select id="compFilter"><option value="">Tümü</option></select>
+    </div>
+    <div>
+      <button id="runBtn" disabled>Hesapla</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="datatable">
+      <thead>
+        <tr><th>#</th><th>Seçenek</th><th>Gerçekleşme</th><th>Oran</th><th>Örneklem</th></tr>
+      </thead>
+      <tbody id="statsBody"><tr><td colspan="5" style="color:var(--muted2);">Hesapla'ya bas.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    "Örneklem" o seçenek için kaç maçın veri sağladığını gösterir — ilk yarı bazlı seçeneklerde
+    ilk yarı skoru eksik olan birkaç maç hariç tutulur. Bu istatistikler geçmişe bakar, gelecekteki
+    tek bir maç için garanti değildir; sadece bu sezonki genel eğilimi gösterir. Örneklem küçükse
+    (birkaç düzine maç) yüzdeler zamanla değişebilir.
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const statusEl = document.getElementById('statusText');
+let ALL_MATCHES = [];
+
+async function init(){
+  statusEl.textContent = 'Maçlar yükleniyor…';
+  try{
+    const [{ data: matches, error: e1 }, { data: comps, error: e2 }] = await Promise.all([
+      sb.from('matches').select('competition_id, home_score, away_score, home_ht_score, away_ht_score').eq('status','FINISHED'),
+      sb.from('competitions').select('id, name'),
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+
+    ALL_MATCHES = matches || [];
+
+    const sel = document.getElementById('compFilter');
+    (comps||[]).sort((a,b)=>a.name.localeCompare(b.name)).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name;
+      sel.appendChild(o);
+    });
+
+    statusEl.textContent = `${ALL_MATCHES.length} bitmiş maç yüklendi.`;
+    document.getElementById('runBtn').disabled = false;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
+  }
+}
+
+function computeStats(matches){
+  const withFT = matches.filter(m => m.home_score != null && m.away_score != null);
+  const withHT = matches.filter(m => m.home_ht_score != null && m.away_ht_score != null);
+
+  const markets = [];
+
+  function addMarket(label, pool, predicate){
+    if(pool.length === 0) return;
+    const count = pool.filter(predicate).length;
+    markets.push({ label, count, n: pool.length, pct: count / pool.length });
+  }
+
+  // Maç sonu (FT) piyasaları
+  addMarket('Ev sahibi kazandı (MS 1)', withFT, m => m.home_score > m.away_score);
+  addMarket('Beraberlik (MS X)', withFT, m => m.home_score === m.away_score);
+  addMarket('Deplasman kazandı (MS 2)', withFT, m => m.home_score < m.away_score);
+  addMarket('2.5 Üst (MS)', withFT, m => (m.home_score + m.away_score) > 2.5);
+  addMarket('2.5 Alt (MS)', withFT, m => (m.home_score + m.away_score) < 2.5);
+  addMarket('1.5 Üst (MS)', withFT, m => (m.home_score + m.away_score) > 1.5);
+  addMarket('1.5 Alt (MS)', withFT, m => (m.home_score + m.away_score) < 1.5);
+  addMarket('3.5 Üst (MS)', withFT, m => (m.home_score + m.away_score) > 3.5);
+  addMarket('3.5 Alt (MS)', withFT, m => (m.home_score + m.away_score) < 3.5);
+  addMarket('Karşılıklı gol var (KG Var)', withFT, m => m.home_score > 0 && m.away_score > 0);
+  addMarket('Karşılıklı gol yok (KG Yok)', withFT, m => m.home_score === 0 || m.away_score === 0);
+  addMarket('Ev sahibi kalesini kapattı', withFT, m => m.away_score === 0);
+  addMarket('Deplasman kalesini kapattı', withFT, m => m.home_score === 0);
+
+  // İlk yarı (İY) piyasaları
+  addMarket('İlk yarı ev sahibi önde', withHT, m => m.home_ht_score > m.away_ht_score);
+  addMarket('İlk yarı beraberlik', withHT, m => m.home_ht_score === m.away_ht_score);
+  addMarket('İlk yarı deplasman önde', withHT, m => m.home_ht_score < m.away_ht_score);
+  addMarket('İlk yarı 0.5 Üst', withHT, m => (m.home_ht_score + m.away_ht_score) > 0.5);
+  addMarket('İlk yarı 1.5 Alt', withHT, m => (m.home_ht_score + m.away_ht_score) < 1.5);
+  addMarket('İlk yarı 1.5 Üst', withHT, m => (m.home_ht_score + m.away_ht_score) > 1.5);
+
+  markets.sort((a,b) => b.pct - a.pct);
+  return markets;
+}
+
+document.getElementById('runBtn').addEventListener('click', () => {
+  const compVal = document.getElementById('compFilter').value;
+  const filtered = compVal ? ALL_MATCHES.filter(m => String(m.competition_id) === compVal) : ALL_MATCHES;
+
+  const markets = computeStats(filtered).slice(0, 10);
+  const body = document.getElementById('statsBody');
+  body.innerHTML = '';
+
+  if(markets.length === 0){
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--muted2);">Yeterli veri yok.</td></tr>';
+    return;
+  }
+
+  markets.forEach((m, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${m.label}</td>
+      <td>${m.count} / ${m.n}</td>
+      <td style="color:var(--accent); font-weight:700;">${(m.pct*100).toFixed(1)}%</td>
+      <td style="color:var(--muted2);">${m.n} maç</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  statusEl.textContent = `${filtered.length} maç üzerinden hesaplandı.`;
+});
+
+init();
+</script>
+</body>
+</html>
