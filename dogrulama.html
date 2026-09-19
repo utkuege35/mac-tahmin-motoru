@@ -88,6 +88,21 @@ const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ---- Canlı / devam eden maç göstergesi (tahmini, gerçek zamanlı değil) ----
+function liveMatchInfo(utcDateStr, status){
+  if(status === 'FINISHED') return { label: null, live:false };
+  const kickoff = new Date(utcDateStr);
+  const now = new Date();
+  if(kickoff > now) return { label: null, live:false };
+  if(status === 'POSTPONED' || status === 'CANCELLED' || status === 'SUSPENDED') return { label: 'İptal/Ertelendi', live:false };
+
+  const elapsedMin = Math.floor((now-kickoff)/60000);
+  if(status === 'PAUSED' || (elapsedMin > 45 && elapsedMin <= 60)) return { label: 'Devre Arası', live:true };
+  if(elapsedMin <= 45) return { label: `Canlı ~${elapsedMin}' (tahmini)`, live:true };
+  if(elapsedMin <= 110) return { label: `Canlı ~${elapsedMin-15}' (tahmini)`, live:true };
+  return { label: 'Muhtemelen bitti (veri güncel değil)', live:true };
+}
+
 async function load(){
   const statusEl = document.getElementById('statusText');
   try{
@@ -105,21 +120,6 @@ async function load(){
     document.getElementById('statScored').textContent = scored.length;
     document.getElementById('statAccuracy').textContent = scored.length > 0 ? `${(correct.length/scored.length*100).toFixed(0)}%` : '—';
     document.getElementById('statBrier').textContent = avgBrier != null ? avgBrier.toFixed(3) : '—';
-
-// ---- Canlı / devam eden maç göstergesi (tahmini, gerçek zamanlı değil) ----
-function liveMatchInfo(utcDateStr, status){
-  if(status === 'FINISHED') return { label: null, live:false };
-  const kickoff = new Date(utcDateStr);
-  const now = new Date();
-  if(kickoff > now) return { label: null, live:false };
-  if(status === 'POSTPONED' || status === 'CANCELLED' || status === 'SUSPENDED') return { label: 'İptal/Ertelendi', live:false };
-
-  const elapsedMin = Math.floor((now-kickoff)/60000);
-  if(status === 'PAUSED' || (elapsedMin > 45 && elapsedMin <= 60)) return { label: 'Devre Arası', live:true };
-  if(elapsedMin <= 45) return { label: `Canlı ~${elapsedMin}' (tahmini)`, live:true };
-  if(elapsedMin <= 110) return { label: `Canlı ~${elapsedMin-15}' (tahmini)`, live:true };
-  return { label: 'Muhtemelen bitti (veri güncel değil)', live:true };
-}
 
     const body = document.getElementById('predBody');
     body.innerHTML = '';
