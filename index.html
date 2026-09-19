@@ -217,13 +217,14 @@ let SELECTED_MATCH_ID = null;
 
 async function loadFixtures(){
   try{
-    const nowISO = new Date().toISOString();
+    // Alt sınır kasıtlı olarak yok: bir maç kickoff saati geçmiş ama henüz
+    // "FINISHED" olarak işaretlenmemişse (örn. devam ediyor ya da
+    // fetch-matches henüz güncellenmediyse) yine de listede görünsün.
     const in21Days = new Date(Date.now() + 21*24*60*60*1000).toISOString();
     const { data, error } = await sb
       .from('matches')
       .select('id, competition_id, home_team_id, away_team_id, utc_date')
       .in('status', ['SCHEDULED','TIMED'])
-      .gte('utc_date', nowISO)
       .lte('utc_date', in21Days)
       .order('utc_date', { ascending: true })
       .limit(150);
