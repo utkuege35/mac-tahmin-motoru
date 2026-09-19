@@ -62,7 +62,7 @@
   <div class="table-wrap">
     <table class="datatable">
       <thead>
-        <tr><th>#</th><th>Tarih</th><th>Maç</th><th>Seçenek</th><th>Model</th><th>Lig Ort.</th><th>Fark</th></tr>
+        <tr><th>#</th><th>Tarih</th><th>Maç</th><th>Seçenek</th><th>Model</th><th>Karşılaştırma</th><th>Fark</th><th>Kaynak</th></tr>
       </thead>
       <tbody id="recBody"><tr><td colspan="7" style="color:var(--muted2);">Tarih aralığı seçip "Önerileri Getir"e bas.</td></tr></tbody>
     </table>
@@ -71,7 +71,8 @@
   <div class="note">
     <strong>Model:</strong> bu spesifik iki takımın rakip-gücü-ayarlı katsayılarından hesaplanan olasılık.<br>
     <strong>Lig Ort.:</strong> o ligde bu sezon aynı seçeneğin genel gerçekleşme sıklığı (takımdan bağımsız).<br>
-    <strong>Fark:</strong> modelin bu maça özel verdiği olasılığın lig ortalamasından ne kadar yüksek/düşük olduğu — büyük pozitif fark, bu maçın o seçenek için ligin geneline göre "olağan dışı" uygun olduğunu gösterir.<br><br>
+    <strong>Karşılaştırma / Kaynak:</strong> mümkün olduğunda (1X2, 2.5 Ü/A, KG V/Y için) gerçek piyasa oranı ("Piyasa", yeşil) kullanılır — yoksa o ligin genel istatistiğine ("Lig Ort.", gri) düşer.<br>
+    <strong>Fark:</strong> modelin bu maça özel verdiği olasılığın karşılaştırma değerinden ne kadar yüksek/düşük olduğu. "Piyasa" kaynaklı büyük pozitif fark, gerçek bir value bet adayı olabilir; "Lig Ort." kaynaklı fark ise sadece bir bağlam notu, doğrudan bahis fırsatı anlamına gelmez.<br><br>
     Liste sadece Bilyoner ve benzeri sitelerde genelde gerçek piyasası açılan seçenekleri içerir (1X2, 2.5 alt/üst, KG var/yok, çifte şans, ilk yarı seçenekleri) — neredeyse kesin (%85+) eşikler (1.5 üst, 3.5 alt gibi) hariç tutuldu çünkü bunlar için ya piyasa açılmıyor ya da oran anlamsız düşük oluyor.<br><br>
     Modelin en yüksek olasılık verdiği seçeneklere göre sıralanır (yalnızca %55 ve üzeri gösterilir). Bu bir garanti değil, istatistiksel bir referans noktasıdır — kendi bildiğin güncel haberlerle (sakatlık, form) çapraz kontrol et. Bahis kararlarını yalnızca bu modele dayandırma.
   </div>
@@ -276,6 +277,14 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     .limit(300);
   if(error){ statusEl.textContent = 'Hata: ' + error.message; return; }
 
+  // Gerçek piyasa oranlarını (varsa) toplu çek — 1X2, 2.5 Ü/A, KG V/Y
+  const fixtureIds = (fixtures||[]).map(f => f.id);
+  let oddsByMatch = {};
+  if(fixtureIds.length > 0){
+    const { data: snaps } = await sb.from('odds_snapshots').select('*').in('match_id', fixtureIds);
+    (snaps||[]).forEach(s => { oddsByMatch[s.match_id] = s; });
+  }
+
   const candidates = [];
 
   (fixtures||[]).forEach(f => {
@@ -294,18 +303,29 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     const all = ht ? { ...ft, ...ht } : ft;
 
     const baseline = BASELINE[f.competition_id] || {};
+    const snap = oddsByMatch[f.id];
     const matchLabel = `${hRating.team_name} - ${aRating.team_name}`;
     const dateStr = matchDate.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' }) + ' ' +
                     matchDate.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
 
+    // Gerçek piyasa oranı varsa lig ortalaması yerine onu kullan (daha güvenilir)
+    const REAL_ODDS_MAP = {
+      over25: snap?.market_over25_novig, under25: snap?.market_under25_novig,
+      btts: snap?.market_btts_yes_novig, nobtts: snap?.market_btts_no_novig,
+      home: snap?.market_home_novig, draw: snap?.market_draw_novig, away: snap?.market_away_novig,
+    };
+
     Object.keys(all).forEach(key => {
       if(!ALLOWED_MARKETS.includes(key)) return;
       const modelPct = all[key];
-      const basePct = baseline[key];
       if(modelPct == null) return;
+      const realOdds = REAL_ODDS_MAP[key];
+      const hasReal = realOdds != null;
+      const basePct = hasReal ? realOdds : baseline[key];
       candidates.push({
         match: matchLabel, date: dateStr, marketKey: key, marketLabel: MARKET_LABELS[key] || key,
         modelPct, basePct: basePct == null ? null : basePct,
+        source: hasReal ? 'Piyasa' : 'Lig Ort.',
       });
     });
   });
@@ -317,12 +337,13 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const body = document.getElementById('recBody');
   body.innerHTML = '';
   if(top.length === 0){
-    body.innerHTML = '<tr><td colspan="7" style="color:var(--muted2);">Bu tarih aralığında %55 üzeri güçlü bir seçenek bulunamadı.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="color:var(--muted2);">Bu tarih aralığında %55 üzeri güçlü bir seçenek bulunamadı.</td></tr>';
   } else {
     top.forEach((c, i) => {
       const diff = c.basePct != null ? (c.modelPct - c.basePct) * 100 : null;
       const diffStr = diff == null ? '—' : `${diff>=0?'+':''}${diff.toFixed(1)}`;
       const diffColor = diff == null ? 'var(--muted2)' : (diff >= 8 ? 'var(--accent)' : (diff <= -8 ? 'var(--red)' : 'var(--muted)'));
+      const sourceColor = c.source === 'Piyasa' ? 'var(--green)' : 'var(--muted2)';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><span class="rank-badge">${i+1}</span></td>
@@ -332,6 +353,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
         <td style="color:var(--accent); font-weight:700;">${(c.modelPct*100).toFixed(1)}%</td>
         <td style="color:var(--muted);">${c.basePct != null ? (c.basePct*100).toFixed(1)+'%' : '—'}</td>
         <td style="color:${diffColor}; font-weight:600;">${diffStr}</td>
+        <td style="color:${sourceColor}; font-size:0.72rem;">${c.basePct != null ? c.source : '—'}</td>
       `;
       body.appendChild(tr);
     });
