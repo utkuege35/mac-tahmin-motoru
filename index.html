@@ -133,6 +133,26 @@
       </div>
     </div>
 
+    <div class="subgrid" id="halfPanels" style="display:none;">
+      <div class="panel">
+        <h2>İlk Yarı</h2>
+        <div class="stat-line"><span>Ev sahibi önde</span><span id="htHome">—</span></div>
+        <div class="stat-line"><span>Beraberlik</span><span id="htDraw">—</span></div>
+        <div class="stat-line"><span>Deplasman önde</span><span id="htAway">—</span></div>
+        <div class="stat-line"><span>0.5 Üst</span><span id="htOver05">—</span></div>
+        <div class="stat-line"><span>1.5 Üst</span><span id="htOver15">—</span></div>
+      </div>
+      <div class="panel">
+        <h2>İkinci Yarı</h2>
+        <div class="stat-line"><span>Ev sahibi önde</span><span id="shHome">—</span></div>
+        <div class="stat-line"><span>Beraberlik</span><span id="shDraw">—</span></div>
+        <div class="stat-line"><span>Deplasman önde</span><span id="shAway">—</span></div>
+        <div class="stat-line"><span>0.5 Üst</span><span id="shOver05">—</span></div>
+        <div class="stat-line"><span>1.5 Üst</span><span id="shOver15">—</span></div>
+      </div>
+    </div>
+    <div class="hint" id="halfMissingNote" style="display:none;">İlk yarı verisi bu takımlar için henüz yetersiz — daha fazla maç oynanınca burası dolacak.</div>
+
     <div class="panel">
       <h2>Skor Olasılık Matrisi</h2>
       <div style="overflow-x:auto;"><table class="matrix" id="matrix"></table></div>
@@ -444,8 +464,64 @@ function computeAndRender(){
     table.appendChild(tr);
   }
 
+  renderHalfMarkets(hRow, aRow);
+
   document.getElementById('results').classList.remove('hidden');
 }
+
+// Basit Poisson tabanlı 1X2 + alt/üst (yarı piyasaları için, düşük skor
+// düzeltmesi olmadan — yarı içi skorlar zaten düşük olduğundan etkisi
+// ihmal edilebilir düzeyde).
+function halfMarket(lambdaA, lambdaB, maxG){
+  let pA=0, pDraw=0, pB=0, over05=0, over15=0;
+  for(let x=0;x<=maxG;x++){
+    for(let y=0;y<=maxG;y++){
+      const p = poissonPmf(x, lambdaA) * poissonPmf(y, lambdaB);
+      if(x>y) pA+=p; else if(x===y) pDraw+=p; else pB+=p;
+      if(x+y > 0.5) over05 += p;
+      if(x+y > 1.5) over15 += p;
+    }
+  }
+  return { pA, pDraw, pB, over05, over15 };
+}
+
+function renderHalfMarkets(hRow, aRow){
+  const panels = document.getElementById('halfPanels');
+  const missingNote = document.getElementById('halfMissingNote');
+
+  const hasHT = hRow && aRow && hRow.attack_ht != null && hRow.defense_ht != null && aRow.attack_ht != null && aRow.defense_ht != null;
+  if(!hasHT){
+    panels.style.display = 'none';
+    missingNote.style.display = 'block';
+    return;
+  }
+  missingNote.style.display = 'none';
+  panels.style.display = 'grid';
+
+  const htHomeAdv = Number(hRow.home_adv_ht) || 1.1;
+  const lambdaHomeHT = Math.max(0.02, Number(hRow.attack_ht) * Number(aRow.defense_ht) * htHomeAdv * homeFatigue.attackMult);
+  const lambdaAwayHT = Math.max(0.02, Number(aRow.attack_ht) * Number(hRow.defense_ht) * awayFatigue.attackMult);
+  const ht = halfMarket(lambdaHomeHT, lambdaAwayHT, 6);
+
+  document.getElementById('htHome').textContent = (ht.pA*100).toFixed(1)+'%';
+  document.getElementById('htDraw').textContent = (ht.pDraw*100).toFixed(1)+'%';
+  document.getElementById('htAway').textContent = (ht.pB*100).toFixed(1)+'%';
+  document.getElementById('htOver05').textContent = (ht.over05*100).toFixed(1)+'%';
+  document.getElementById('htOver15').textContent = (ht.over15*100).toFixed(1)+'%';
+
+  const hasSH = hRow.attack_2h != null && hRow.defense_2h != null && aRow.attack_2h != null && aRow.defense_2h != null;
+  if(hasSH){
+    const shHomeAdv = Number(hRow.home_adv_2h) || 1.1;
+    const lambdaHomeSH = Math.max(0.02, Number(hRow.attack_2h) * Number(aRow.defense_2h) * shHomeAdv * homeFatigue.attackMult);
+    const lambdaAwaySH = Math.max(0.02, Number(aRow.attack_2h) * Number(hRow.defense_2h) * awayFatigue.attackMult);
+    const sh = halfMarket(lambdaHomeSH, lambdaAwaySH, 6);
+
+    document.getElementById('shHome').textContent = (sh.pA*100).toFixed(1)+'%';
+    document.getElementById('shDraw').textContent = (sh.pDraw*100).toFixed(1)+'%';
+    document.getElementById('shAway').textContent = (sh.pB*100).toFixed(1)+'%';
+    document.getElementById('shOver05').textContent = (sh.over05*100).toFixed(1)+'%';
+    document.getElementById('shOver15').textContent = (sh.over15*100).toFixed(1)+'%';
+  }
 
 async function loadMarketComparison(pHome, pDraw, pAway){
   const panel = document.getElementById('marketPanel');
