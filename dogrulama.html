@@ -72,7 +72,7 @@
   <div class="table-wrap">
     <table class="datatable">
       <thead>
-        <tr><th>Tarih / Saat</th><th>Maç</th><th>Seçenek</th><th>Model %</th><th>Sonuç</th></tr>
+        <tr><th>Tarih / Saat</th><th>Maç</th><th>Seçenek</th><th>Model %</th><th>Gerçek Skor</th><th>Sonuç</th></tr>
       </thead>
       <tbody id="recResultsBody"></tbody>
     </table>
@@ -186,11 +186,24 @@ async function loadRecommendations(){
       } else {
         resultCell = `<span class="pill pending">Bekliyor</span>`;
       }
+
+      // İlk yarı seçenekleri için ilk yarı skorunu, diğerleri için maç sonu skorunu göster
+      let scoreCell = '—';
+      const isHT = r.market_key && r.market_key.startsWith('ht');
+      if(isHT && r.home_ht_score != null && r.away_ht_score != null){
+        scoreCell = `${r.home_ht_score} – ${r.away_ht_score} (İY)`;
+      } else if(!isHT && r.home_score != null && r.away_score != null){
+        scoreCell = `${r.home_score} – ${r.away_score}`;
+      } else if(live.live){
+        scoreCell = `${r.home_score ?? '?'} – ${r.away_score ?? '?'}`;
+      }
+
       tr.innerHTML = `
         <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—'}</td>
         <td>${r.home_team_name} - ${r.away_team_name}</td>
         <td>${r.market_label}</td>
         <td style="color:var(--accent); font-weight:600;">${(r.model_pct*100).toFixed(1)}%</td>
+        <td style="font-variant-numeric: tabular-nums;">${scoreCell}</td>
         <td>${resultCell}</td>
       `;
       body.appendChild(tr);
