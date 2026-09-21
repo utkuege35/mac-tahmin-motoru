@@ -28,7 +28,6 @@
     <a href="kupon.html">Hafta Sonu Kuponu</a>
     <a href="dogrulama.html">Doğrulama Paneli</a>
     <a href="istatistikler.html">İstatistikler</a>
-    <a href="oneriler.html">Önerilen Bahisler</a>
     <a href="yenile.html" class="active">Verileri Güncelle</a>
   </nav>
   <div class="guide">
@@ -36,7 +35,7 @@
     <ol>
       <li>Arka planda zaten otomatik çalışıyor (birkaç saatte bir)</li>
       <li>Hemen şimdi güncel veri istiyorsan buradan tetikle</li>
-      <li>Sırayla üç adım tamamlanır, ~1 dakika sürer</li>
+      <li>Sırayla dört adım tamamlanır, ~1 dakika sürer</li>
     </ol>
   </div>
   <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
@@ -52,7 +51,8 @@
   </div>
 
   <div class="note">
-    Bu sayfa üç adımı sırayla çalıştırır: önce maç sonuçları, sonra takım katsayıları,
+    Bu sayfa dört adımı sırayla çalıştırır: önce maç sonuçları (5 Avrupa ligi), sonra Süper Lig sonuçları,
+    sonra takım katsayıları,
     sonra piyasa oranları. Arka planda zaten otomatik (birkaç saatte bir) çalışıyor —
     bu sayfa sadece beklemeden hemen güncel veri istediğinde işine yarar.
   </div>
@@ -100,6 +100,7 @@ runBtn.addEventListener('click', async () => {
   logEl.innerHTML = '';
   log('Güncelleme başladı…');
   await callFunction('fetch-matches');
+  await callFunction('fetch-matches-tr');
   await callFunction('compute-ratings');
   await callFunction('fetch-odds');
   log('Bitti. Diğer sayfaları yenileyip güncel veriyi görebilirsin.', 'ok');
