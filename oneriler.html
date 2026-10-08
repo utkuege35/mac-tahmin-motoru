@@ -34,7 +34,7 @@
     <ol>
       <li>Tarih aralığındaki tüm maçlar + tüm piyasalar hesaplanır</li>
       <li>Her biri, o ligin genel ortalamasıyla karşılaştırılır</li>
-      <li>Modelin en yüksek olasılık verdiği 12 seçenek listelenir</li>
+      <li>Modelin en yüksek olasılık verdiği seçenekler listelenir (sayıyı sen seçersin)</li>
     </ol>
   </div>
   <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
@@ -53,6 +53,24 @@
     <div>
       <label for="endDate">Bitiş</label>
       <input type="date" id="endDate">
+    </div>
+    <div>
+      <label for="limitSelect">Listede göster</label>
+      <select id="limitSelect">
+        <option value="12" selected>İlk 12</option>
+        <option value="25">İlk 25</option>
+        <option value="50">İlk 50</option>
+        <option value="0">Tümü (%55 üzeri)</option>
+      </select>
+    </div>
+    <div>
+      <label for="perMatchSelect">Maç başına</label>
+      <select id="perMatchSelect">
+        <option value="0" selected>Tüm seçenekler</option>
+        <option value="1">En iyi 1</option>
+        <option value="2">En iyi 2</option>
+        <option value="3">En iyi 3</option>
+      </select>
     </div>
     <div>
       <button id="runBtn" disabled>Önerileri Getir</button>
@@ -364,7 +382,18 @@ document.getElementById('runBtn').addEventListener('click', async () => {
 
   // Sadece %55 ve üzeri model olasılığı olanlar, modele göre sıralı
   const filtered = candidates.filter(c => c.modelPct >= 0.55).sort((a,b) => b.modelPct - a.modelPct);
-  const top = filtered.slice(0, 12);
+
+  // Maç başına en fazla N seçenek (0 = sınırsız), sonra toplam sınır (0 = tümü)
+  const perMatch = Number(document.getElementById('perMatchSelect').value);
+  const limit = Number(document.getElementById('limitSelect').value);
+  const perMatchCount = {};
+  const spread = perMatch > 0
+    ? filtered.filter(c => {
+        perMatchCount[c.matchId] = (perMatchCount[c.matchId] || 0) + 1;
+        return perMatchCount[c.matchId] <= perMatch;
+      })
+    : filtered;
+  const top = limit > 0 ? spread.slice(0, limit) : spread;
   LAST_RECOMMENDATIONS = top;
 
   const body = document.getElementById('recBody');
@@ -397,7 +426,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   }
 
   document.getElementById('saveRecBtn').disabled = top.length === 0;
-  statusEl.textContent = `${(fixtures||[]).length} maç, ${candidates.length} seçenek tarandı — en güçlü ${top.length} tanesi listelendi.`;
+  statusEl.textContent = `${(fixtures||[]).length} maç, ${candidates.length} seçenek tarandı, ${filtered.length} tanesi %55 üzeri, en güçlü ${top.length} tanesi listelendi.`;
 });
 
 document.getElementById('saveRecBtn').addEventListener('click', async () => {
