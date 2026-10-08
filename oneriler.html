@@ -34,7 +34,7 @@
     <ol>
       <li>Tarih aralığındaki tüm maçlar + tüm piyasalar hesaplanır</li>
       <li>Her biri, o ligin genel ortalamasıyla karşılaştırılır</li>
-      <li>Modelin en yüksek olasılık verdiği seçenekler listelenir (sayıyı sen seçersin)</li>
+      <li>Seçtiğin olasılık aralığındaki seçenekler listelenir (adil oran = 1 ÷ olasılık)</li>
     </ol>
   </div>
   <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
@@ -55,12 +55,28 @@
       <input type="date" id="endDate">
     </div>
     <div>
+      <label for="rangeSelect">Olasılık aralığı</label>
+      <select id="rangeSelect">
+        <option value="0.40-0.70" selected>Dengeli (%40-70, oranı çok düşük olmayan)</option>
+        <option value="0.55-1">Çok olası (%55 ve üzeri)</option>
+        <option value="0.25-0.40">Yüksek oranlı (%25-40)</option>
+        <option value="0.25-1">Hepsi (%25 ve üzeri)</option>
+      </select>
+    </div>
+    <div>
+      <label for="sortSelect">Sırala</label>
+      <select id="sortSelect">
+        <option value="p" selected>Olasılığa göre</option>
+        <option value="diff">Lig ortalamasından sapmaya göre</option>
+      </select>
+    </div>
+    <div>
       <label for="limitSelect">Listede göster</label>
       <select id="limitSelect">
         <option value="12" selected>İlk 12</option>
         <option value="25">İlk 25</option>
         <option value="50">İlk 50</option>
-        <option value="0">Tümü (%55 üzeri)</option>
+        <option value="0">Tümü (seçili aralıkta)</option>
       </select>
     </div>
     <div>
@@ -80,9 +96,9 @@
   <div class="table-wrap">
     <table class="datatable">
       <thead>
-        <tr><th>#</th><th>Tarih</th><th>Durum</th><th>Maç</th><th>Seçenek</th><th>Model</th><th>Karşılaştırma</th><th>Fark</th><th>Kaynak</th></tr>
+        <tr><th>#</th><th>Tarih</th><th>Durum</th><th>Maç</th><th>Seçenek</th><th>Model</th><th>Adil oran</th><th>Karşılaştırma</th><th>Fark</th><th>Kaynak</th></tr>
       </thead>
-      <tbody id="recBody"><tr><td colspan="9" style="color:var(--muted2);">Tarih aralığı seçip "Önerileri Getir"e bas.</td></tr></tbody>
+      <tbody id="recBody"><tr><td colspan="10" style="color:var(--muted2);">Tarih aralığı seçip "Önerileri Getir"e bas.</td></tr></tbody>
     </table>
   </div>
 
@@ -96,8 +112,10 @@
     <strong>Lig Ort.:</strong> o ligde bu sezon aynı seçeneğin genel gerçekleşme sıklığı (takımdan bağımsız).<br>
     <strong>Karşılaştırma / Kaynak:</strong> mümkün olduğunda (1X2, 2.5 Ü/A, KG V/Y için) gerçek piyasa oranı ("Piyasa", yeşil) kullanılır — yoksa o ligin genel istatistiğine ("Lig Ort.", gri) düşer.<br>
     <strong>Fark:</strong> modelin bu maça özel verdiği olasılığın karşılaştırma değerinden ne kadar yüksek/düşük olduğu. "Piyasa" kaynaklı büyük pozitif fark, gerçek bir value bet adayı olabilir; "Lig Ort." kaynaklı fark ise sadece bir bağlam notu, doğrudan bahis fırsatı anlamına gelmez.<br><br>
-    Liste sadece Bilyoner ve benzeri sitelerde genelde gerçek piyasası açılan seçenekleri içerir (1X2, 2.5 alt/üst, KG var/yok, çifte şans, ilk yarı seçenekleri) — neredeyse kesin (%85+) eşikler (1.5 üst, 3.5 alt gibi) hariç tutuldu çünkü bunlar için ya piyasa açılmıyor ya da oran anlamsız düşük oluyor.<br><br>
-    Modelin en yüksek olasılık verdiği seçeneklere göre sıralanır (yalnızca %55 ve üzeri gösterilir). Bu bir garanti değil, istatistiksel bir referans noktasıdır — kendi bildiğin güncel haberlerle (sakatlık, form) çapraz kontrol et. Bahis kararlarını yalnızca bu modele dayandırma.
+    <strong>Adil oran:</strong> 1 ÷ model olasılığı. Bahis sitesinin oranı marj yüzünden genelde bunun %15-25 altında olur; sitedeki oran adil orandan yüksekse model o seçeneği değerli görüyor demektir, düşükse pahalı.<br>
+    <strong>Piyasalar:</strong> 1X2, 2.5/3.5 Üst ve 2.5 Alt, KG var/yok, çifte şans, ilk yarı, handikap (ev ya da deplasman -1 ve -2: favori en az 2 ya da 3 farkla kazanır) ve toplam gol aralığı (0-1, 2-3, 4-5). Neredeyse kesin seçenekler (1.5 Üst gibi) listede yok.<br>
+    <strong>Dikkat:</strong> Handikap, toplam gol ve ilk yarı için gerçek oranımız yok, karşılaştırma sadece lig ortalaması. Modelin kalitesi 3-4 maçlık veriyle sınırlı; güç farkı büyük maçlarda handikap olasılıklarını genelde düşük, dengeli maçlarda gol sayısını abartılı verebilir.<br><br>
+    Bu bir garanti değil, istatistiksel bir referans noktasıdır — kendi bildiğin güncel haberlerle (sakatlık, form) çapraz kontrol et. Bahis kararlarını yalnızca bu modele dayandırma.
   </div>
 </main>
 
@@ -175,6 +193,13 @@ function computeBaselines(){
       dc1x: pct(withFT, m => m.home_score >= m.away_score),
       dcx2: pct(withFT, m => m.away_score >= m.home_score),
       dc12: pct(withFT, m => m.home_score !== m.away_score),
+      hcH1: pct(withFT, m => (m.home_score-m.away_score) >= 2),
+      hcH2: pct(withFT, m => (m.home_score-m.away_score) >= 3),
+      hcA1: pct(withFT, m => (m.away_score-m.home_score) >= 2),
+      hcA2: pct(withFT, m => (m.away_score-m.home_score) >= 3),
+      tg01: pct(withFT, m => (m.home_score+m.away_score) <= 1),
+      tg23: pct(withFT, m => { const t=m.home_score+m.away_score; return t>=2 && t<=3; }),
+      tg45: pct(withFT, m => { const t=m.home_score+m.away_score; return t>=4 && t<=5; }),
       htHome: pct(withHT, m => m.home_ht_score > m.away_ht_score),
       htDraw: pct(withHT, m => m.home_ht_score === m.away_ht_score),
       htAway: pct(withHT, m => m.home_ht_score < m.away_ht_score),
@@ -255,7 +280,8 @@ function computeFTMarkets(homeRating, awayRating, hf, af){
     if(p<0) p=0;
     total += p;
   }
-  const r = { home:0, draw:0, away:0, over15:0, under15:0, over25:0, under25:0, over35:0, under35:0, btts:0, nobtts:0 };
+  const r = { home:0, draw:0, away:0, over15:0, under15:0, over25:0, under25:0, over35:0, under35:0, btts:0, nobtts:0,
+              hcH1:0, hcH2:0, hcA1:0, hcA2:0, tg01:0, tg23:0, tg45:0 };
   for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++){
     let p = poissonPmf(x, lambdaHome) * poissonPmf(y, lambdaAway) * tau(x,y,lambdaHome,lambdaAway,RHO);
     if(p<0) p=0;
@@ -266,6 +292,13 @@ function computeFTMarkets(homeRating, awayRating, hf, af){
     if(tot>2.5) r.over25+=p; else r.under25+=p;
     if(tot>3.5) r.over35+=p; else r.under35+=p;
     if(x>0&&y>0) r.btts+=p; else r.nobtts+=p;
+    // Handikap (3'lü handikapta -1 / -2): favori en az 2 / 3 farkla kazanırsa tutar
+    if(x-y>=2) r.hcH1+=p;
+    if(x-y>=3) r.hcH2+=p;
+    if(y-x>=2) r.hcA1+=p;
+    if(y-x>=3) r.hcA2+=p;
+    // Toplam gol aralığı
+    if(tot<=1) r.tg01+=p; else if(tot<=3) r.tg23+=p; else if(tot<=5) r.tg45+=p;
   }
   r.dc1x = r.home + r.draw;   // Çifte şans: Ev veya Beraberlik
   r.dcx2 = r.draw + r.away;   // Çifte şans: Beraberlik veya Deplasman
@@ -299,13 +332,20 @@ const MARKET_LABELS = {
   dc12: 'Çifte Şans: 1-2 (Beraberlik Hariç)',
   htHome: 'İlk Yarı Ev Önde', htDraw: 'İlk Yarı Beraberlik', htAway: 'İlk Yarı Deplasman Önde',
   htOver05: 'İlk Yarı 0.5 Üst',
+  hcH1: 'Handikap: Ev sahibi -1 (2+ farkla kazanır)',
+  hcH2: 'Handikap: Ev sahibi -2 (3+ farkla kazanır)',
+  hcA1: 'Handikap: Deplasman -1 (2+ farkla kazanır)',
+  hcA2: 'Handikap: Deplasman -2 (3+ farkla kazanır)',
+  tg01: 'Toplam gol 0-1', tg23: 'Toplam gol 2-3', tg45: 'Toplam gol 4-5',
+  over35: '3.5 Üst (MS)',
 };
 
 // Bilyoner ve benzeri Türkiye bahis siteler i̇nde gerçekten piyasası açılan
 // seçenekler bunlar — 1.5/3.5 gibi neredeyse kesin (%85+) eşikler genelde
 // hiç piyasaya konmuyor ya da oranı anlamsız düşük oluyor, o yüzden
 // öneri listesine dahil etmiyoruz.
-const ALLOWED_MARKETS = ['home','draw','away','over25','under25','btts','nobtts','dc1x','dcx2','dc12','htHome','htDraw','htAway','htOver05'];
+const ALLOWED_MARKETS = ['home','draw','away','over25','under25','btts','nobtts','dc1x','dcx2','dc12','htHome','htDraw','htAway','htOver05',
+                         'hcH1','hcH2','hcA1','hcA2','tg01','tg23','tg45','over35'];
 
 document.getElementById('runBtn').addEventListener('click', async () => {
   const startVal = document.getElementById('startDate').value;
@@ -380,8 +420,19 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     });
   });
 
-  // Sadece %55 ve üzeri model olasılığı olanlar, modele göre sıralı
-  const filtered = candidates.filter(c => c.modelPct >= 0.55).sort((a,b) => b.modelPct - a.modelPct);
+  // Seçilen olasılık aralığındakiler; sıralama olasılığa ya da lig ortalamasından sapmaya göre
+  const [minP, maxP] = document.getElementById('rangeSelect').value.split('-').map(Number);
+  const sortBy = document.getElementById('sortSelect').value;
+  const filtered = candidates
+    .filter(c => c.modelPct >= minP && c.modelPct <= maxP)
+    .sort((a,b) => {
+      if(sortBy === 'diff'){
+        const da = a.basePct != null ? a.modelPct - a.basePct : -Infinity;
+        const db = b.basePct != null ? b.modelPct - b.basePct : -Infinity;
+        return db - da;
+      }
+      return b.modelPct - a.modelPct;
+    });
 
   // Maç başına en fazla N seçenek (0 = sınırsız), sonra toplam sınır (0 = tümü)
   const perMatch = Number(document.getElementById('perMatchSelect').value);
@@ -399,7 +450,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const body = document.getElementById('recBody');
   body.innerHTML = '';
   if(top.length === 0){
-    body.innerHTML = '<tr><td colspan="9" style="color:var(--muted2);">Bu tarih aralığında %55 üzeri güçlü bir seçenek bulunamadı.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" style="color:var(--muted2);">Bu tarih ve olasılık aralığında uygun seçenek bulunamadı.</td></tr>';
   } else {
     top.forEach((c, i) => {
       const diff = c.basePct != null ? (c.modelPct - c.basePct) * 100 : null;
@@ -417,6 +468,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
         <td>${c.match}</td>
         <td>${c.marketLabel}</td>
         <td style="color:var(--accent); font-weight:700;">${(c.modelPct*100).toFixed(1)}%</td>
+        <td style="font-variant-numeric: tabular-nums;">${(1/c.modelPct).toFixed(2)}</td>
         <td style="color:var(--muted);">${c.basePct != null ? (c.basePct*100).toFixed(1)+'%' : '—'}</td>
         <td style="color:${diffColor}; font-weight:600;">${diffStr}</td>
         <td style="color:${sourceColor}; font-size:0.72rem;">${c.basePct != null ? c.source : '—'}</td>
@@ -426,7 +478,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   }
 
   document.getElementById('saveRecBtn').disabled = top.length === 0;
-  statusEl.textContent = `${(fixtures||[]).length} maç, ${candidates.length} seçenek tarandı, ${filtered.length} tanesi %55 üzeri, en güçlü ${top.length} tanesi listelendi.`;
+  statusEl.textContent = `${(fixtures||[]).length} maç, ${candidates.length} seçenek tarandı, ${filtered.length} tanesi seçilen aralıkta, ilk ${top.length} tanesi listelendi.`;
 });
 
 document.getElementById('saveRecBtn').addEventListener('click', async () => {
