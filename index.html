@@ -42,9 +42,12 @@
 
   <div class="panel">
     <h2>Maç Seç</h2>
+    <label for="leagueSelect">Lig</label>
+    <select id="leagueSelect"><option value="">Tüm ligler</option></select>
+
     <label for="fixtureSelect">Yaklaşan bir fikstürden seç</label>
     <select id="fixtureSelect"><option value="">— Serbest seçim —</option></select>
-    <div class="hint">Gerçek fikstür seçersen, maç bitince tahmin otomatik puanlanır.</div>
+    <div class="hint" id="fixtureHint">Gerçek fikstür seçersen, maç bitince tahmin otomatik puanlanır.</div>
 
     <div class="row2">
       <div>
@@ -204,6 +207,7 @@ async function loadData(){
       return;
     }
     setStatus('ok', `${TEAM_STATS.length} takım için katsayılar yüklü.`);
+    populateLeagueSelect();
     populateSelects();
     document.getElementById('runBtn').disabled = false;
     loadFixtures();
@@ -215,6 +219,7 @@ async function loadData(){
 
 let FIXTURES = [];
 let SELECTED_MATCH_ID = null;
+let LEAGUE_FILTER = '';   // '' = tüm ligler, aksi halde competition_id (metin)
 
 async function loadFixtures(){
   try{
@@ -231,23 +236,60 @@ async function loadFixtures(){
       .limit(150);
     if(error) throw error;
     FIXTURES = data || [];
-
-    const sel = document.getElementById('fixtureSelect');
-    sel.innerHTML = '<option value="">— Serbest seçim —</option>';
-    FIXTURES.forEach((f, idx) => {
-      const homeRow = TEAM_STATS.find(r => r.team_id === f.home_team_id);
-      const awayRow = TEAM_STATS.find(r => r.team_id === f.away_team_id);
-      if(!homeRow || !awayRow) return;
-      const dateStr = new Date(f.utc_date).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' });
-      const o = document.createElement('option');
-      o.value = idx;
-      o.textContent = `${dateStr} — ${homeRow.team_name} - ${awayRow.team_name}`;
-      sel.appendChild(o);
-    });
+    renderFixtureOptions();
   }catch(err){
     console.error('Fikstür yüklenemedi:', err);
   }
 }
+
+// Fikstür listesini seçili lige göre yeniden çizer
+function renderFixtureOptions(){
+  const sel = document.getElementById('fixtureSelect');
+  const hint = document.getElementById('fixtureHint');
+  sel.innerHTML = '<option value="">— Serbest seçim —</option>';
+  let shown = 0;
+  FIXTURES.forEach((f, idx) => {
+    if(LEAGUE_FILTER && String(f.competition_id) !== LEAGUE_FILTER) return;
+    const homeRow = TEAM_STATS.find(r => r.team_id === f.home_team_id);
+    const awayRow = TEAM_STATS.find(r => r.team_id === f.away_team_id);
+    if(!homeRow || !awayRow) return;
+    const dateStr = new Date(f.utc_date).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' });
+    const o = document.createElement('option');
+    o.value = idx;
+    o.textContent = `${dateStr} — ${homeRow.team_name} - ${awayRow.team_name}`;
+    sel.appendChild(o);
+    shown++;
+  });
+  if(LEAGUE_FILTER && shown === 0){
+    hint.textContent = 'Bu lig için yaklaşan fikstür verisi yok, takımları aşağıdan elle seçebilirsin.';
+  } else {
+    hint.textContent = 'Gerçek fikstür seçersen, maç bitince tahmin otomatik puanlanır.';
+  }
+}
+
+// Lig seçicisini veritabanındaki liglerden doldurur
+function populateLeagueSelect(){
+  const sel = document.getElementById('leagueSelect');
+  const leagues = new Map();
+  TEAM_STATS.forEach(r => leagues.set(String(r.competition_id), r.competition_name));
+  sel.innerHTML = '<option value="">Tüm ligler</option>';
+  [...leagues.entries()]
+    .sort((a,b) => a[1].localeCompare(b[1], 'tr'))
+    .forEach(([id, name]) => {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = name;
+      sel.appendChild(o);
+    });
+}
+
+document.getElementById('leagueSelect').addEventListener('change', (e) => {
+  LEAGUE_FILTER = e.target.value;
+  SELECTED_MATCH_ID = null;
+  document.getElementById('fixtureSelect').value = '';
+  populateSelects();        // takım listelerini seçili lige göre yeniden doldurur
+  renderFixtureOptions();   // fikstür listesini de aynı lige göre süzer
+});
 
 document.getElementById('fixtureSelect').addEventListener('change', (e) => {
   const idx = e.target.value;
@@ -267,8 +309,12 @@ function populateSelects(){
   homeSel.innerHTML = '';
   awaySel.innerHTML = '';
 
+  const rows = LEAGUE_FILTER
+    ? TEAM_STATS.filter(r => String(r.competition_id) === LEAGUE_FILTER)
+    : TEAM_STATS;
+
   const byComp = {};
-  TEAM_STATS.forEach(row => {
+  rows.forEach(row => {
     if(!byComp[row.competition_name]) byComp[row.competition_name] = [];
     byComp[row.competition_name].push(row);
   });
@@ -290,7 +336,7 @@ function populateSelects(){
     sel.disabled = false;
   });
 
-  if(TEAM_STATS.length > 1){
+  if(rows.length > 1){
     homeSel.selectedIndex = 0;
     awaySel.selectedIndex = 1;
   }
