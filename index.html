@@ -162,6 +162,20 @@
       <div style="overflow-x:auto;"><table class="matrix" id="matrix"></table></div>
     </div>
 
+    <div class="subgrid" id="historyPanels">
+      <div class="panel">
+        <h2 id="histHomeTitle">Ev sahibi, bu sezon</h2>
+        <div class="hint" id="histHomeSummary" style="margin:0 0 10px;"></div>
+        <div style="overflow-x:auto;"><table class="datatable" id="histHomeTable"></table></div>
+      </div>
+      <div class="panel">
+        <h2 id="histAwayTitle">Deplasman, bu sezon</h2>
+        <div class="hint" id="histAwaySummary" style="margin:0 0 10px;"></div>
+        <div style="overflow-x:auto;"><table class="datatable" id="histAwayTable"></table></div>
+      </div>
+    </div>
+    <div class="hint" id="histNote" style="margin:-4px 0 16px;"></div>
+
     <div class="panel">
       <button class="full" id="saveBtn">Tahmini Kaydet</button>
       <div class="hint" id="saveStatus" style="margin-top:10px; margin-bottom:0;"></div>
@@ -513,8 +527,94 @@ function computeAndRender(){
   }
 
   renderHalfMarkets(hRow, aRow);
+  renderTeamHistory(hRow, aRow);
 
   document.getElementById('results').classList.remove('hidden');
+}
+
+// ---- Takım geçmişi: bu sezonki maçlar + rakip gücü ----
+// Rakip gücü = hücum / savunma (1.00 = lig ortalaması, yüksek = güçlü).
+// Bu katsayılar zincirleme hesaplanır: bir takımın gücü, oynadığı rakiplerin
+// gücüne göre; o rakiplerin gücü de kendi rakiplerine göre (30 tur iteratif uyum).
+function strengthOf(row){
+  if(!row || row.attack == null || row.defense == null || Number(row.defense) === 0) return null;
+  return Number(row.attack) / Number(row.defense);
+}
+
+async function loadTeamMatches(row){
+  const { data, error } = await sb
+    .from('matches')
+    .select('utc_date, home_team_id, away_team_id, home_score, away_score')
+    .eq('competition_id', row.competition_id)
+    .eq('status', 'FINISHED')
+    .or(`home_team_id.eq.${row.team_id},away_team_id.eq.${row.team_id}`)
+    .order('utc_date', { ascending: true });
+  if(error){ console.error('Geçmiş alınamadı:', error); return []; }
+  return data || [];
+}
+
+function drawHistory(row, matches, titleId, summaryId, tableId){
+  document.getElementById(titleId).textContent = `${row.team_name}, bu sezon (${row.competition_name})`;
+  const table = document.getElementById(tableId);
+  const summary = document.getElementById(summaryId);
+  table.innerHTML = '';
+
+  if(matches.length === 0){
+    summary.textContent = 'Bu sezon bu yarışmada oynanmış maç yok.';
+    return;
+  }
+
+  let w=0, d=0, l=0, gf=0, ga=0, oppSum=0, oppN=0;
+  const body = document.createElement('tbody');
+  matches.forEach(m => {
+    const isHome = m.home_team_id === row.team_id;
+    const oppId = isHome ? m.away_team_id : m.home_team_id;
+    const my = isHome ? m.home_score : m.away_score;
+    const their = isHome ? m.away_score : m.home_score;
+    const oppRow = TEAM_STATS.find(r => r.team_id === oppId && r.competition_id === row.competition_id);
+    const oppStrength = strengthOf(oppRow);
+    gf += my; ga += their;
+    let cls = 'pending', lab = 'B';
+    if(my > their){ w++; cls = 'ok'; lab = 'G'; }
+    else if(my < their){ l++; cls = 'bad'; lab = 'M'; }
+    else { d++; }
+    if(oppStrength != null){ oppSum += oppStrength; oppN++; }
+    const dateStr = new Date(m.utc_date).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' });
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${dateStr}</td>
+      <td>${isHome ? 'Ev' : 'Dep'}</td>
+      <td>${oppRow ? oppRow.team_name : 'Bilinmiyor'}</td>
+      <td>${my} – ${their} <span class="pill ${cls}">${lab}</span></td>
+      <td>${oppStrength != null ? oppStrength.toFixed(2) : '—'}</td>`;
+    body.appendChild(tr);
+  });
+
+  const head = document.createElement('thead');
+  head.innerHTML = '<tr><th>Tarih</th><th>Yer</th><th>Rakip</th><th>Skor</th><th>Rakip gücü</th></tr>';
+  table.appendChild(head);
+  table.appendChild(body);
+
+  const own = strengthOf(row);
+  const avgOpp = oppN ? (oppSum / oppN) : null;
+  summary.textContent =
+    `${matches.length} maç: ${w} galibiyet, ${d} beraberlik, ${l} mağlubiyet, averaj ${gf}:${ga}. ` +
+    `Kendi gücü ${own != null ? own.toFixed(2) : '—'}, oynadığı rakiplerin ortalama gücü ${avgOpp != null ? avgOpp.toFixed(2) : '—'}.`;
+}
+
+async function renderTeamHistory(hRow, aRow){
+  if(!hRow || !aRow) return;
+  try{
+    const [hm, am] = await Promise.all([loadTeamMatches(hRow), loadTeamMatches(aRow)]);
+    drawHistory(hRow, hm, 'histHomeTitle', 'histHomeSummary', 'histHomeTable');
+    drawHistory(aRow, am, 'histAwayTitle', 'histAwaySummary', 'histAwayTable');
+    const ha = hRow.home_adv != null ? Number(hRow.home_adv).toFixed(2) : '—';
+    document.getElementById('histNote').textContent =
+      `Rakip gücü: hücum ÷ savunma, 1.00 lig ortalaması. Rakibin gücü kendi rakiplerine göre zincirleme hesaplanır. ` +
+      `Bu ligin ev sahibi avantaj çarpanı: ${ha}. G: galibiyet, B: beraberlik, M: mağlubiyet.`;
+  }catch(err){
+    console.error(err);
+  }
 }
 
 // Basit Poisson tabanlı 1X2 + alt/üst (yarı piyasaları için, düşük skor
