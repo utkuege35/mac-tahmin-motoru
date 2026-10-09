@@ -55,6 +55,10 @@
       <input type="date" id="endDate">
     </div>
     <div>
+      <label for="leagueSelect">Lig</label>
+      <select id="leagueSelect"><option value="">Tüm ligler</option></select>
+    </div>
+    <div>
       <label for="rangeSelect">Olasılık aralığı</label>
       <select id="rangeSelect">
         <option value="0.40-0.70" selected>Dengeli (%40-70, oranı çok düşük olmayan)</option>
@@ -150,6 +154,18 @@ async function init(){
     FINISHED_MATCHES = finishedRows || [];
     FINISHED_FOR_BASELINE = finishedRows || [];
     computeBaselines();
+
+    // Lig seçicisi: katsayısı olan liglerden
+    const leagues = new Map();
+    (ratingRows||[]).forEach(r => leagues.set(String(r.competition_id), r.competition_name));
+    const leagueSel = document.getElementById('leagueSelect');
+    [...leagues.entries()]
+      .sort((a,b) => a[1].localeCompare(b[1], 'tr'))
+      .forEach(([id, name]) => {
+        const o = document.createElement('option');
+        o.value = id; o.textContent = name;
+        leagueSel.appendChild(o);
+      });
 
     statusEl.textContent = `Hazır — ${Object.keys(RATINGS).length} takım, ${FINISHED_MATCHES.length} geçmiş maç.`;
     document.getElementById('runBtn').disabled = false;
@@ -356,11 +372,16 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const startISO = startVal + 'T00:00:00Z';
   const endISO = endVal + 'T23:59:59Z';
 
-  const { data: fixtures, error } = await sb.from('matches')
+  const leagueSelEl = document.getElementById('leagueSelect');
+  const leagueVal = leagueSelEl.value;
+  const leagueName = leagueVal ? leagueSelEl.options[leagueSelEl.selectedIndex].textContent : '';
+  let fixQuery = sb.from('matches')
     .select('id, competition_id, home_team_id, away_team_id, utc_date, status')
     .in('status', ['SCHEDULED','TIMED','IN_PLAY','PAUSED'])
     .gte('utc_date', startISO)
-    .lte('utc_date', endISO)
+    .lte('utc_date', endISO);
+  if(leagueVal) fixQuery = fixQuery.eq('competition_id', Number(leagueVal));
+  const { data: fixtures, error } = await fixQuery
     .order('utc_date', { ascending: true })
     .limit(300);
   if(error){ statusEl.textContent = 'Hata: ' + error.message; return; }
@@ -450,7 +471,14 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const body = document.getElementById('recBody');
   body.innerHTML = '';
   if(top.length === 0){
-    body.innerHTML = '<tr><td colspan="10" style="color:var(--muted2);">Bu tarih ve olasılık aralığında uygun seçenek bulunamadı.</td></tr>';
+    let emptyMsg = 'Bu tarih ve olasılık aralığında uygun seçenek bulunamadı.';
+    if((fixtures||[]).length === 0){
+      emptyMsg = leagueVal
+        ? `${leagueName} için bu tarih aralığında fikstür verisi yok.`
+        : 'Bu tarih aralığında fikstür verisi yok.';
+      if(/s[uü]per lig/i.test(leagueName)) emptyMsg += ' Süper Lig için yaklaşan fikstür kaynağımız yok, maçları Tek Maç sayfasından elle hesaplayabilirsin.';
+    }
+    body.innerHTML = `<tr><td colspan="10" style="color:var(--muted2);">${emptyMsg}</td></tr>`;
   } else {
     top.forEach((c, i) => {
       const diff = c.basePct != null ? (c.modelPct - c.basePct) * 100 : null;
