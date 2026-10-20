@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Handikap — Maç Tahmin Motoru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .num{ font-variant-numeric: tabular-nums; }
+  .pick{ color: var(--accent); font-weight: 700; }
+  .dim{ color: var(--muted2); }
+  td.sep, th.sep{ border-left: 1px solid var(--line-strong); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <a href="dogrulama.html">Doğrulama Paneli</a>
+    <a href="istatistikler.html">İstatistikler</a>
+    <a href="oneriler.html">Önerilen Bahisler</a>
+    <a href="iyms.html">İlk Yarı / Maç Sonu</a>
+    <a href="handikap.html" class="active">Handikap</a>
+    <a href="yenile.html">Verileri Güncelle</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Tarih aralığındaki maçların gol beklentisi hesaplanır</li>
+      <li>Ev sahibi ve deplasmanın 1 (ya da 2, 3) handikapa rağmen kazanma olasılığı çıkar</li>
+      <li>Adil oran ve Bilyoner'de olası oran yanında gösterilir</li>
+    </ol>
+  </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Handikap</h1>
+  <p class="page-sub">Handikaplı maç sonucunda handikaba rağmen kazanabilecek takımlar</p>
+  <div class="status-line" id="statusText">Yükleniyor…</div>
+
+  <div class="panel controls" style="margin-bottom:20px;">
+    <div>
+      <label for="startDate">Başlangıç</label>
+      <input type="date" id="startDate">
+    </div>
+    <div>
+      <label for="endDate">Bitiş</label>
+      <input type="date" id="endDate">
+    </div>
+    <div>
+      <label for="leagueSelect">Lig</label>
+      <select id="leagueSelect"><option value="">Tüm ligler</option></select>
+    </div>
+    <div>
+      <label for="lineSelect">Handikap</label>
+      <select id="lineSelect">
+        <option value="1" selected>1 gol (en az 2 farkla kazanır)</option>
+        <option value="2">2 gol (en az 3 farkla kazanır)</option>
+        <option value="3">3 gol (en az 4 farkla kazanır)</option>
+      </select>
+    </div>
+    <div>
+      <label for="minSelect">En az olasılık</label>
+      <select id="minSelect">
+        <option value="0.15">%15 ve üzeri</option>
+        <option value="0.25" selected>%25 ve üzeri</option>
+        <option value="0.35">%35 ve üzeri</option>
+        <option value="0">Hepsi</option>
+      </select>
+    </div>
+    <div>
+      <label for="sortSelect">Sırala</label>
+      <select id="sortSelect">
+        <option value="best" selected>En olası taraf</option>
+        <option value="home">Ev sahibine göre</option>
+        <option value="away">Deplasmana göre</option>
+        <option value="date">Tarihe göre</option>
+      </select>
+    </div>
+    <div>
+      <button id="runBtn" disabled>Bülteni Getir</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="datatable" id="resultTable">
+      <thead id="resultHead"></thead>
+      <tbody id="resultBody"><tr><td style="color:var(--muted2);">Tarih aralığı seçip "Bülteni Getir"e bas.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>1 handikap:</strong> favori takım en az 2 farkla kazanırsa bahis tutar. Tam 1 farkla kazanırsa 3'lü handikapta "HMS X" çıkar ve bahis yanar. Bilyoner'de ev sahibi için bu bahis <em>0:1</em> satırının <em>HMS 1</em>'i, deplasman için <em>1:0</em> satırının <em>HMS 2</em>'sidir. 2 ve 3 handikapta aynı mantıkla <em>0:2</em>, <em>0:3</em> ve <em>2:0</em>, <em>3:0</em> satırlarına bak.<br>
+    <strong>Adil oran:</strong> 1 ÷ olasılık.<br>
+    <strong>Olası Bilyoner oranı:</strong> adil oran ÷ 1.23. Attığın ekran görüntülerindeki 26 handikap satırında üç sonucun olasılıkları toplamı hep 1.23-1.24 çıktı (yaklaşık %23 marj, 1X2'de ortalama %17.7). Bu sadece fikir verir, gerçek oran farklı olabilir. Bu marjla bahsin ortalama geri dönüşü yaklaşık %81.<br>
+    <strong>Tam N farkla:</strong> favori tam handikap kadar farkla kazanırsa bahis yanar, bu yüzden o ihtimali ayrıca gösteriyoruz.<br><br>
+    Model, 3-4 maçlık veriyle sınırlı olabilir. Güç farkı büyük maçlarda favorinin farkla kazanma ihtimalini genelde düşük görür (Uluslar Ligi'nde Bilyoner'in bu ihtimale verdiği olasılık modelinkinin 1.3 ile 3.4 katı arasında çıkmıştı). Dengeli maçlarda ise gol sayısını abartılı verebilir. Bu bir garanti değil, istatistiksel bir referanstır. Bahis kararlarını yalnızca bu modele dayandırma.
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const HANDICAP_OVERROUND = 1.23;   // Bilyoner handikap satırlarında ölçülen toplam (26 satır: 1.230-1.238)
+const MAX_ODDS = 35;
+const RHO = -0.10;                 // Dixon-Coles düşük skor düzeltmesi (diğer sayfalarla aynı)
+const MAXG = 8;
+
+const statusEl = document.getElementById('statusText');
+let RATINGS = {};
+let RECENT_FINISHED = [];
+
+document.getElementById('startDate').value = new Date().toISOString().slice(0,10);
+document.getElementById('endDate').value = new Date(Date.now() + 5*24*60*60*1000).toISOString().slice(0,10);
+
+async function init(){
+  statusEl.textContent = 'Veriler yükleniyor…';
+  try{
+    const since = new Date(Date.now() - 14*24*60*60*1000).toISOString();
+    const [{ data: ratingRows, error: e1 }, { data: recentRows, error: e2 }] = await Promise.all([
+      sb.from('team_ratings_full').select('*'),
+      sb.from('matches').select('home_team_id, away_team_id, utc_date').eq('status','FINISHED').gte('utc_date', since),
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+
+    (ratingRows||[]).forEach(r => { RATINGS[r.team_id + '::' + r.competition_id] = r; });
+    RECENT_FINISHED = recentRows || [];
+
+    const leagues = new Map();
+    (ratingRows||[]).forEach(r => leagues.set(String(r.competition_id), r.competition_name));
+    const leagueSel = document.getElementById('leagueSelect');
+    [...leagues.entries()].sort((a,b) => a[1].localeCompare(b[1], 'tr')).forEach(([id, name]) => {
+      const o = document.createElement('option');
+      o.value = id; o.textContent = name;
+      leagueSel.appendChild(o);
+    });
+
+    statusEl.textContent = `Hazır, ${Object.keys(RATINGS).length} takımın katsayıları yüklü.`;
+    document.getElementById('runBtn').disabled = false;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
+  }
+}
+
+// ---- Yorgunluk (diğer sayfalarla aynı kural) ----
+function findLastMatchDate(teamId, beforeDate){
+  let best = null;
+  RECENT_FINISHED.forEach(m => {
+    if(m.home_team_id !== teamId && m.away_team_id !== teamId) return;
+    const d = new Date(m.utc_date);
+    if(d < beforeDate && (best === null || d > best)) best = d;
+  });
+  return best;
+}
+function fatigueAdjust(restDays){
+  if(restDays == null) return { attackMult: 1, defenseMult: 1 };
+  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08 };
+  if(restDays <= 5) return { attackMult: 0.96, defenseMult: 1.04 };
+  return { attackMult: 1, defenseMult: 1 };
+}
+
+// ---- Canlı maç göstergesi (tahmini) ----
+function liveMatchInfo(utcDateStr, status){
+  if(status === 'FINISHED') return { label: 'Bitti', live:false };
+  const kickoff = new Date(utcDateStr);
+  const now = new Date();
+  if(kickoff > now) return { label: null, live:false };
+  if(status === 'POSTPONED' || status === 'CANCELLED' || status === 'SUSPENDED') return { label: 'İptal/Ertelendi', live:false };
+  const elapsedMin = Math.floor((now-kickoff)/60000);
+  if(status === 'PAUSED' || (elapsedMin > 45 && elapsedMin <= 60)) return { label: 'Devre Arası', live:true };
+  if(elapsedMin <= 45) return { label: `Canlı ~${elapsedMin}' (tahmini)`, live:true };
+  if(elapsedMin <= 110) return { label: `Canlı ~${elapsedMin-15}' (tahmini)`, live:true };
+  return { label: 'Muhtemelen bitti (veri güncel değil)', live:true };
+}
+
+// ---- Poisson + Dixon-Coles ----
+function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
+function factorial(n){ let r=1; for(let i=2;i<=n;i++) r*=i; return r; }
+function tau(x, y, lh, la){
+  if(x===0 && y===0) return 1 - (lh*la*RHO);
+  if(x===0 && y===1) return 1 + (lh*RHO);
+  if(x===1 && y===0) return 1 + (la*RHO);
+  if(x===1 && y===1) return 1 - RHO;
+  return 1;
+}
+
+// Maç sonu skor dağılımından fark (ev - deplasman) olasılıkları
+function computeMargins(hR, aR, hf, af){
+  const attH = Number(hR.attack) * hf.attackMult, defH = Number(hR.defense) * hf.defenseMult;
+  const attA = Number(aR.attack) * af.attackMult, defA = Number(aR.defense) * af.defenseMult;
+  const homeAdv = Number(hR.home_adv) || 1.3;
+  const lamH = Math.max(0.05, attH * defA * homeAdv);
+  const lamA = Math.max(0.05, attA * defH);
+
+  const margin = {};            // fark -> olasılık
+  let total = 0;
+  for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++){
+    let p = poissonPmf(x, lamH) * poissonPmf(y, lamA) * tau(x, y, lamH, lamA);
+    if(p < 0) p = 0;
+    margin[x-y] = (margin[x-y] || 0) + p;
+    total += p;
+  }
+  Object.keys(margin).forEach(k => margin[k] /= total);
+  const sumWhere = f => Object.keys(margin).reduce((s,k) => f(Number(k)) ? s + margin[k] : s, 0);
+  return { lamH, lamA, margin, sumWhere };
+}
+
+const fmtPct = v => (v*100).toFixed(1) + '%';
+const fairOdds = p => p > 0 ? 1/p : Infinity;
+const likelyOdds = p => p > 0 ? Math.min(MAX_ODDS, Math.max(1.01, (1/p) / HANDICAP_OVERROUND)) : MAX_ODDS;
+
+function statusCell(live){
+  return live.live
+    ? `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`
+    : `<span class="dim" style="font-size:0.72rem;">Planlandı</span>`;
+}
+
+document.getElementById('runBtn').addEventListener('click', async () => {
+  const startVal = document.getElementById('startDate').value;
+  const endVal = document.getElementById('endDate').value;
+  if(!startVal || !endVal) return;
+  const leagueSelEl = document.getElementById('leagueSelect');
+  const leagueVal = leagueSelEl.value;
+  const leagueName = leagueVal ? leagueSelEl.options[leagueSelEl.selectedIndex].textContent : '';
+  const N = Number(document.getElementById('lineSelect').value);        // handikap gol sayısı
+  const minP = Number(document.getElementById('minSelect').value);
+  const sortBy = document.getElementById('sortSelect').value;
+
+  statusEl.textContent = 'Maçlar hesaplanıyor…';
+  let fixQuery = sb.from('matches')
+    .select('id, competition_id, home_team_id, away_team_id, utc_date, status')
+    .in('status', ['SCHEDULED','TIMED','IN_PLAY','PAUSED'])
+    .gte('utc_date', startVal + 'T00:00:00Z')
+    .lte('utc_date', endVal + 'T23:59:59Z');
+  if(leagueVal) fixQuery = fixQuery.eq('competition_id', Number(leagueVal));
+  const { data: fixtures, error } = await fixQuery.order('utc_date', { ascending: true }).limit(300);
+  if(error){ statusEl.textContent = 'Hata: ' + error.message; return; }
+
+  const items = [];
+  (fixtures||[]).forEach(f => {
+    const hR = RATINGS[f.home_team_id + '::' + f.competition_id];
+    const aR = RATINGS[f.away_team_id + '::' + f.competition_id];
+    if(!hR || !aR) return;
+    const matchDate = new Date(f.utc_date);
+    const homeRest = findLastMatchDate(f.home_team_id, matchDate);
+    const awayRest = findLastMatchDate(f.away_team_id, matchDate);
+    const hf = fatigueAdjust(homeRest ? Math.round((matchDate-homeRest)/86400000) : null);
+    const af = fatigueAdjust(awayRest ? Math.round((matchDate-awayRest)/86400000) : null);
+    const m = computeMargins(hR, aR, hf, af);
+
+    const homeWin = m.sumWhere(d => d > 0), draw = m.sumWhere(d => d === 0), awayWin = m.sumWhere(d => d < 0);
+    items.push({
+      matchDate, lamH: m.lamH, lamA: m.lamA,
+      match: `${hR.team_name} - ${aR.team_name}`,
+      dateStr: matchDate.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' }) + ' ' + matchDate.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' }),
+      live: liveMatchInfo(f.utc_date, f.status),
+      ft: [homeWin, draw, awayWin],
+      homeCover: m.sumWhere(d => d >= N + 1),     // ev sahibi N handikapa rağmen kazanır (fark >= N+1)
+      awayCover: m.sumWhere(d => -d >= N + 1),
+      homeExact: m.sumWhere(d => d === N),        // tam N farkla kazanır (bahis yanar)
+      awayExact: m.sumWhere(d => -d === N),
+    });
+  });
+
+  const shown = items.filter(it => Math.max(it.homeCover, it.awayCover) >= minP);
+  shown.sort((a,b) => {
+    if(sortBy === 'home') return b.homeCover - a.homeCover;
+    if(sortBy === 'away') return b.awayCover - a.awayCover;
+    if(sortBy === 'date') return a.matchDate - b.matchDate;
+    return Math.max(b.homeCover, b.awayCover) - Math.max(a.homeCover, a.awayCover);
+  });
+
+  const head = document.getElementById('resultHead');
+  const body = document.getElementById('resultBody');
+  body.innerHTML = '';
+
+  if(shown.length === 0){
+    head.innerHTML = '';
+    let msg;
+    if(items.length === 0){
+      msg = leagueVal ? `${leagueName} için bu tarih aralığında fikstür verisi yok.` : 'Bu tarih aralığında fikstür verisi yok.';
+      if(/s[uü]per lig/i.test(leagueName)) msg += ' Süper Lig için yaklaşan fikstür kaynağımız yok, maçları Tek Maç sayfasından elle hesaplayabilirsin.';
+    } else {
+      msg = `${items.length} maç var ama hiçbirinde bir tarafın ${N} handikapa rağmen kazanma olasılığı seçtiğin alt sınırın üzerinde değil. "En az olasılık"ı düşürmeyi dene.`;
+    }
+    body.innerHTML = `<tr><td style="color:var(--muted2);">${msg}</td></tr>`;
+    statusEl.textContent = `${items.length} maç tarandı, 0 tanesi listelendi.`;
+    return;
+  }
+
+  head.innerHTML = '<tr><th>Tarih</th><th>Durum</th><th>Maç</th><th class="num">Beklenen gol</th><th class="num">MS 1/X/2</th>' +
+    `<th class="num sep">Ev -${N}</th><th class="num">Adil oran</th><th class="num">Olası oran</th>` +
+    `<th class="num sep">Dep -${N}</th><th class="num">Adil oran</th><th class="num">Olası oran</th>` +
+    `<th class="num sep">Tam ${N} farkla (ev / dep)</th></tr>`;
+  shown.forEach(it => {
+    const homeBetter = it.homeCover >= it.awayCover;
+    const c1 = homeBetter ? 'pick' : '', c2 = homeBetter ? '' : 'pick';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${it.dateStr}</td>
+      <td>${statusCell(it.live)}</td>
+      <td>${it.match}</td>
+      <td class="num dim">${it.lamH.toFixed(2)} - ${it.lamA.toFixed(2)}</td>
+      <td class="num dim">${Math.round(it.ft[0]*100)}/${Math.round(it.ft[1]*100)}/${Math.round(it.ft[2]*100)}</td>
+      <td class="num sep ${c1}">${fmtPct(it.homeCover)}</td>
+      <td class="num ${c1}">${fairOdds(it.homeCover).toFixed(2)}</td>
+      <td class="num ${c1}">${likelyOdds(it.homeCover).toFixed(2)}</td>
+      <td class="num sep ${c2}">${fmtPct(it.awayCover)}</td>
+      <td class="num ${c2}">${fairOdds(it.awayCover).toFixed(2)}</td>
+      <td class="num ${c2}">${likelyOdds(it.awayCover).toFixed(2)}</td>
+      <td class="num sep dim">${fmtPct(it.homeExact)} / ${fmtPct(it.awayExact)}</td>`;
+    body.appendChild(tr);
+  });
+  statusEl.textContent = `${items.length} maç tarandı, ${shown.length} tanesi listelendi.`;
+});
+
+init();
+</script>
+</body>
+</html>
