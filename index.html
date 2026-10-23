@@ -9,6 +9,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .histMe{ font-weight: 700; color: var(--ink); }
+  .histOpp{ color: var(--muted); }
+  .histScore{ font-weight: 700; color: var(--accent); padding: 0 4px; font-variant-numeric: tabular-nums; }
+</style>
 </head>
 <body>
 
@@ -574,6 +579,7 @@ function drawHistory(row, matches, titleId, summaryId, tableId){
     const my = isHome ? m.home_score : m.away_score;
     const their = isHome ? m.away_score : m.home_score;
     const oppRow = TEAM_STATS.find(r => r.team_id === oppId && r.competition_id === row.competition_id);
+    const oppName = oppRow ? oppRow.team_name : 'Bilinmiyor';
     const oppStrength = strengthOf(oppRow);
     gf += my; ga += their;
     let cls = 'pending', lab = 'B';
@@ -583,17 +589,19 @@ function drawHistory(row, matches, titleId, summaryId, tableId){
     if(oppStrength != null){ oppSum += oppStrength; oppN++; }
     const dateStr = new Date(m.utc_date).toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' });
     const tr = document.createElement('tr');
+    // Ev sahibi her zaman solda yazılır, bu tablonun takımı koyu gösterilir
+    const homeName = isHome ? row.team_name : oppName;
+    const awayName = isHome ? oppName : row.team_name;
     tr.innerHTML = `
       <td>${dateStr}</td>
-      <td>${isHome ? 'Ev' : 'Dep'}</td>
-      <td>${oppRow ? oppRow.team_name : 'Bilinmiyor'}</td>
-      <td>${my} – ${their} <span class="pill ${cls}">${lab}</span></td>
+      <td><span class="${isHome ? 'histMe' : 'histOpp'}">${homeName}</span> <span class="histScore">${m.home_score} – ${m.away_score}</span> <span class="${isHome ? 'histOpp' : 'histMe'}">${awayName}</span></td>
+      <td><span class="pill ${cls}">${lab}</span></td>
       <td>${oppStrength != null ? oppStrength.toFixed(2) : '—'}</td>`;
     body.appendChild(tr);
   });
 
   const head = document.createElement('thead');
-  head.innerHTML = '<tr><th>Tarih</th><th>Yer</th><th>Rakip</th><th>Skor</th><th>Rakip gücü</th></tr>';
+  head.innerHTML = '<tr><th>Tarih</th><th>Maç</th><th>Sonuç</th><th>Rakip gücü</th></tr>';
   table.appendChild(head);
   table.appendChild(body);
 
@@ -613,7 +621,8 @@ async function renderTeamHistory(hRow, aRow){
     const ha = hRow.home_adv != null ? Number(hRow.home_adv).toFixed(2) : '—';
     document.getElementById('histNote').textContent =
       `Rakip gücü: hücum ÷ savunma, 1.00 lig ortalaması. Rakibin gücü kendi rakiplerine göre zincirleme hesaplanır. ` +
-      `Bu ligin ev sahibi avantaj çarpanı: ${ha}. G: galibiyet, B: beraberlik, M: mağlubiyet.`;
+      `Bu ligin ev sahibi avantaj çarpanı: ${ha}. Maçlarda ev sahibi solda yazılır, tablonun takımı koyu gösterilir. ` +
+      `Sonuç ve rakip gücü o tablonun takımı açısındandır. G: galibiyet, B: beraberlik, M: mağlubiyet.`;
   }catch(err){
     console.error(err);
   }
