@@ -555,7 +555,7 @@ async function loadTeamMatches(row){
     .eq('competition_id', row.competition_id)
     .eq('status', 'FINISHED')
     .or(`home_team_id.eq.${row.team_id},away_team_id.eq.${row.team_id}`)
-    .order('utc_date', { ascending: true });
+    .order('utc_date', { ascending: false });   // en son maç en üstte
   if(error){ console.error('Geçmiş alınamadı:', error); return []; }
   return data || [];
 }
