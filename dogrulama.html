@@ -41,6 +41,7 @@
 <main class="main">
   <h1 class="page-title">Doğrulama Paneli</h1>
   <p class="page-sub">Kaydettiğin tahminler ile gerçek sonuçların karşılaştırması</p>
+  <p class="page-sub" style="margin-top:-6px;"><a href="#bahisler" style="color:var(--accent); font-weight:600; text-decoration:none;">Kaydettiğin bahislerin sonuçları ve filtreler ↓</a></p>
   <div class="status-line" id="statusText">Yükleniyor…</div>
 
   <div class="summary-grid">
@@ -65,7 +66,7 @@
     Sadece gerçek fikstürden seçilip kaydedilen tahminler otomatik puanlanır. En az 20-30 sonuçlanmış tahmin birikene kadar bu sayılara çok güvenme.
   </div>
 
-  <h2 style="font-size:1.1rem; font-weight:700; margin:32px 0 6px;">Önerilen Bahis Sonuçları</h2>
+  <h2 id="bahisler" style="font-size:1.1rem; font-weight:700; margin:32px 0 6px; scroll-margin-top:16px;">Önerilen Bahis Sonuçları</h2>
   <p class="page-sub" style="margin-bottom:14px;">Önerilen Bahisler ve bahis sayfalarından kaydettiğin seçeneklerin gerçekleşme durumu</p>
   <div class="status-line" id="recStatusText">Yükleniyor…</div>
 
@@ -105,11 +106,11 @@
     <div class="stat-card"><div class="num" id="recStatHitRate">—</div><div class="lbl">Gerçekleşme oranı</div></div>
   </div>
 
-  <h3 style="font-size:0.95rem; font-weight:700; margin:20px 0 8px;">Bahis türüne göre</h3>
+  <h3 style="font-size:0.95rem; font-weight:700; margin:20px 0 8px;">Bahis seçeneğine göre (gerçekleşme oranı yüksekten düşüğe)</h3>
   <div class="table-wrap" style="margin-bottom:18px;">
     <table class="datatable">
       <thead>
-        <tr><th>Bahis türü</th><th>Toplam</th><th>Sonuçlanan</th><th>Gerçekleşen</th><th>Gerçekleşme</th><th>Ort. model %</th></tr>
+        <tr><th>Bahis seçeneği</th><th>Kayıtlı maç</th><th>Sonuçlanan</th><th>Gerçekleşen</th><th>Gerçekleşme oranı</th><th>Ort. model %</th></tr>
       </thead>
       <tbody id="recTypeBody"><tr><td colspan="6" style="color:var(--muted2);">Henüz kaydedilmiş bahis yok.</td></tr></tbody>
     </table>
@@ -126,7 +127,7 @@
 
   <div class="note">
     Bu tablo, Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydedilen seçeneklerin sonradan gerçekleşip gerçekleşmediğini gösterir.<br>
-    <strong>Bahis türüne göre tablo:</strong> "Gerçekleşme" kaydettiğin bahislerin gerçekte ne sıklıkla tuttuğu, "Ort. model %" ise modelin bu bahislere ortalama kaç olasılık verdiği. İkisi birbirine yakınsa model o bahis türünde iyi kalibre. Gerçekleşme belirgin biçimde düşükse model o türde fazla iyimser. Türler birbirinden çok farklı olduğu için tek bir genel orana değil buna bak, ve her tür için en az 20-30 sonuçlanmış bahis birikene kadar sayılara çok güvenme.<br>
+    <strong>Bahis seçeneğine göre tablo:</strong> Her seçenek için (örneğin "İlk Yarı Sonucu: Beraberlik") kaç maç kaydettiğin, kaçı sonuçlandı, kaçı gerçekleşti ve gerçekleşme oranı yazar. Seçenekler gerçekleşme oranı en yüksekten en düşüğe sıralanır. "Ort. model %" modelin o bahislere ortalama kaç olasılık verdiğidir. İkisi birbirine yakınsa model o seçenekte iyi kalibre, gerçekleşme belirgin biçimde düşükse model fazla iyimser. <strong>Soluk satırlar</strong> 10'dan az sonuçlanmış maça dayanır, oranına güvenme. Örneğin 1 maçta 1 gerçekleşme %100 görünür ama bir şey kanıtlamaz.<br>
     <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır, üstteki kartlar ve bahis türü tablosu da filtreye göre değişir. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
     <strong>Belirsiz:</strong> maç bitmiş ama sonucu hesaplanamayan bahis (örneğin ilk yarı skoru veride yok).
   </div>
@@ -204,21 +205,6 @@ async function load(){
     console.error(err);
     statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
   }
-}
-
-function betGroup(key){
-  key = key || '';
-  if(['home','draw','away'].includes(key)) return 'Maç sonucu (1X2)';
-  if(['over25','under25','over35'].includes(key)) return 'Alt/Üst (maç sonu)';
-  if(['btts','nobtts'].includes(key)) return 'Karşılıklı gol';
-  if(['dc1x','dcx2','dc12'].includes(key)) return 'Çifte şans';
-  if(key.startsWith('htft_')) return 'İlk yarı / maç sonu';
-  if(key === 'htDraw') return 'İlk yarı beraberlik';
-  if(key === 'htOver05') return 'İlk yarı 0.5 Üst';
-  if(key.startsWith('ht')) return 'İlk yarı önde (ev ya da deplasman)';
-  if(key.startsWith('hc')) return 'Handikap';
-  if(key.startsWith('tg')) return 'Toplam gol aralığı';
-  return 'Diğer';
 }
 
 const OLD_BATCH = '__eski__';
@@ -364,31 +350,37 @@ function renderRecommendations(){
     body.appendChild(tr);
   });
 
-  // Bahis türüne göre özet (filtreye göre)
-  const groups = {};
-  scored.forEach(r => {
-    const g = betGroup(r.market_key);
-    const o = groups[g] || (groups[g] = { total: 0, hit: 0, pctSum: 0 });
-    o.total++; if(r.hit === true) o.hit++; o.pctSum += Number(r.model_pct);
+  // Bahis seçeneğine göre özet (filtreye göre), gerçekleşme oranına göre sıralı
+  const opts = {};
+  rows.forEach(r => {
+    const o = opts[r.market_key] || (opts[r.market_key] = { label: r.market_label || r.market_key, total: 0, scored: 0, hit: 0, pctSum: 0 });
+    o.total++;
+    if(r.status === 'FINISHED' && r.hit !== null && r.hit !== undefined){
+      o.scored++;
+      if(r.hit === true) o.hit++;
+      o.pctSum += Number(r.model_pct);
+    }
   });
-  const allCounts = {};
-  rows.forEach(r => { const g = betGroup(r.market_key); allCounts[g] = (allCounts[g] || 0) + 1; });
+  const optList = Object.values(opts).sort((a,b) => {
+    const ra = a.scored ? a.hit / a.scored : -1;
+    const rb = b.scored ? b.hit / b.scored : -1;
+    return (rb - ra) || (b.scored - a.scored) || a.label.localeCompare(b.label, 'tr');
+  });
   const typeBody = document.getElementById('recTypeBody');
-  const names = Object.keys(allCounts).sort((a,b) => a.localeCompare(b, 'tr'));
   typeBody.innerHTML = '';
-  if(names.length === 0){
+  if(optList.length === 0){
     typeBody.innerHTML = '<tr><td colspan="6" style="color:var(--muted2);">Bu filtrelerde kayıtlı bahis yok.</td></tr>';
   }
-  names.forEach(g => {
-    const o = groups[g];
+  optList.forEach(o => {
     const tr = document.createElement('tr');
+    if(o.scored < 10) tr.style.opacity = '0.6';
     tr.innerHTML = `
-      <td>${g}</td>
-      <td style="font-variant-numeric: tabular-nums;">${allCounts[g]}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o ? o.total : 0}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o ? o.hit : 0}</td>
-      <td style="color:var(--accent); font-weight:600; font-variant-numeric: tabular-nums;">${o ? Math.round(o.hit/o.total*100) + '%' : '—'}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o ? (o.pctSum/o.total*100).toFixed(0) + '%' : '—'}</td>`;
+      <td>${o.label}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o.total}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o.scored}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o.hit}</td>
+      <td style="color:var(--accent); font-weight:700; font-variant-numeric: tabular-nums;">${o.scored ? (o.hit/o.scored*100).toFixed(0) + '%' : '—'}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o.scored ? (o.pctSum/o.scored*100).toFixed(0) + '%' : '—'}</td>`;
     typeBody.appendChild(tr);
   });
 
