@@ -93,6 +93,11 @@
     </table>
   </div>
 
+  <div class="panel" style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <button class="secondary" id="saveBtn" disabled>İlk 25'i Doğrulamaya Kaydet</button>
+    <span id="saveStatus" style="font-size:0.74rem; color: var(--muted2);"></span>
+  </div>
+
   <div class="note">
     <strong>Ev ve Dep kazanır:</strong> modelin o takımın maçı kazanma olasılığı (MS 1 ve MS 2).<br>
     <strong>Adil oran:</strong> 1 ÷ olasılık.<br>
@@ -242,6 +247,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const sortBy = document.getElementById('sortSelect').value;
 
   statusEl.textContent = 'Maçlar hesaplanıyor…';
+  setSaveRows([]);
   let fixQuery = sb.from('matches')
     .select('id, competition_id, home_team_id, away_team_id, utc_date, status')
     .in('status', ['SCHEDULED','TIMED','IN_PLAY','PAUSED'])
@@ -273,7 +279,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     const r = computeResult(hR, aR, hf, af);
     const snap = marketByMatch[f.id];
     items.push({
-      matchDate, p: r.p,
+      f, matchDate, p: r.p,
       match: `${hR.team_name} - ${aR.team_name}`,
       dateStr: matchDate.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' }) + ' ' + matchDate.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' }),
       live: liveMatchInfo(f.utc_date, f.status),
@@ -331,7 +337,48 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       ${marketCell(it.mkt ? it.mkt[2] : null, it.p[2])}`;
     body.appendChild(tr);
   });
+  setSaveRows(buildSaveRows(shown));
   statusEl.textContent = `${items.length} maç tarandı, ${shown.length} tanesi listelendi.`;
+});
+
+// Her maç için kazanma ihtimali yüksek olan taraf (ev ya da deplasman)
+function buildSaveRows(list){
+  return list.filter(it => !it.live.live).map(it => {
+    const home = it.p[0] >= it.p[2];
+    return {
+      match_id: it.f.id,
+      market_key: home ? 'home' : 'away',
+      market_label: home ? 'Ev Sahibi Kazanır (MS 1)' : 'Deplasman Kazanır (MS 2)',
+      model_pct: home ? it.p[0] : it.p[2],
+      base_pct: null,
+      source: 'Maç Sonucu',
+    };
+  }).sort((a,b) => b.model_pct - a.model_pct);
+}
+
+// ---- Doğrulama için kaydet: listenin en olası ilk 25 bahsi ----
+const SAVE_LIMIT = 25;
+let SAVE_ROWS = [];
+function setSaveRows(rows){
+  SAVE_ROWS = rows.slice(0, SAVE_LIMIT);
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = SAVE_ROWS.length === 0;
+  btn.textContent = SAVE_ROWS.length === 0 ? "İlk 25'i Doğrulamaya Kaydet"
+    : (SAVE_ROWS.length < SAVE_LIMIT ? `${SAVE_ROWS.length} bahsi Doğrulamaya Kaydet` : "İlk 25'i Doğrulamaya Kaydet");
+  document.getElementById('saveStatus').textContent = '';
+}
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const st = document.getElementById('saveStatus');
+  if(SAVE_ROWS.length === 0) return;
+  st.textContent = 'Kaydediliyor…';
+  try{
+    const { error } = await sb.from('market_recommendations').upsert(SAVE_ROWS, { onConflict: 'match_id,market_key' });
+    if(error) throw error;
+    st.textContent = `${SAVE_ROWS.length} bahis kaydedildi. Sonuçlarını Doğrulama Paneli'nde takip edebilirsin.`;
+  }catch(err){
+    console.error(err);
+    st.textContent = 'Hata: ' + (err.message || err);
+  }
 });
 
 init();
