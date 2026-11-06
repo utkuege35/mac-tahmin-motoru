@@ -9,6 +9,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .tabs{ display:flex; gap:4px; margin:4px 0 22px; border-bottom:1px solid var(--line); overflow-x:auto; }
+  .tabs .tab{
+    background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent;
+    border-radius: 0; padding: 11px 18px; font-weight: 600; font-size: 0.86rem; white-space: nowrap;
+  }
+  .tabs .tab:hover{ filter: none; color: var(--ink); }
+  .tabs .tab.active{ color: var(--accent); border-bottom-color: var(--accent); }
+  .tabs .tab .cnt{ margin-left: 6px; font-size: 0.72rem; font-weight: 600; color: var(--muted2); }
+  .tabs .tab.active .cnt{ color: var(--accent); }
+  .tabpane{ display:none; }
+  .tabpane.active{ display:block; }
+  .sub-h{ font-size:0.95rem; font-weight:700; margin:22px 0 8px; }
+  .num{ font-variant-numeric: tabular-nums; }
+</style>
 </head>
 <body>
 
@@ -30,9 +45,9 @@
   <div class="guide">
     <h3>Nasıl çalışır</h3>
     <ol>
-      <li>Kaydettiğin tahminler burada listelenir</li>
-      <li>Maç bitip <code>fetch-matches</code> çalışınca otomatik puanlanır</li>
-      <li>İsabet oranı ve Brier skoruna zamanla bak</li>
+      <li>Kaydettiğin tahmin ve bahisler burada listelenir</li>
+      <li>Oynanmamış maçlar ayrı sekmede bekler, bitince otomatik puanlanır</li>
+      <li>Bahis seçeneklerinin gerçekleşme oranına zamanla bak</li>
     </ol>
   </div>
   <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
@@ -40,97 +55,145 @@
 
 <main class="main">
   <h1 class="page-title">Doğrulama Paneli</h1>
-  <p class="page-sub">Kaydettiğin tahminler ile gerçek sonuçların karşılaştırması</p>
-  <p class="page-sub" style="margin-top:-6px;"><a href="#bahisler" style="color:var(--accent); font-weight:600; text-decoration:none;">Kaydettiğin bahislerin sonuçları ve filtreler ↓</a></p>
-  <div class="status-line" id="statusText">Yükleniyor…</div>
+  <p class="page-sub">Kaydettiğin tahmin ve bahislerin gerçek sonuçlarla karşılaştırması</p>
 
-  <div class="summary-grid">
-    <div class="stat-card"><div class="num" id="statTotal">—</div><div class="lbl">Toplam tahmin</div></div>
-    <div class="stat-card"><div class="num" id="statScored">—</div><div class="lbl">Sonuçlanan</div></div>
-    <div class="stat-card"><div class="num" id="statAccuracy">—</div><div class="lbl">İsabet oranı (1X2)</div></div>
-    <div class="stat-card"><div class="num" id="statBrier">—</div><div class="lbl">Ort. Brier skoru</div></div>
+  <div class="tabs" id="tabs" role="tablist">
+    <button class="tab active" data-tab="tahmin">Tahmin Sonuçları<span class="cnt" id="cntTahmin"></span></button>
+    <button class="tab" data-tab="bahis">Bahis Sonuçları<span class="cnt" id="cntBahis"></span></button>
+    <button class="tab" data-tab="secenek">Seçeneklere Göre Oranlar</button>
+    <button class="tab" data-tab="bekleyen">Oynanmamış Maçlar<span class="cnt" id="cntBekleyen"></span></button>
   </div>
 
-  <div class="table-wrap">
-    <table class="datatable">
-      <thead>
-        <tr><th>Tarih / Saat</th><th>Maç</th><th>Tahmin (E/B/D)</th><th>Gerçek skor</th><th>Sonuç</th><th>Brier</th></tr>
-      </thead>
-      <tbody id="predBody"></tbody>
-    </table>
-  </div>
-
-  <div class="note">
-    <strong>İsabet oranı:</strong> modelin en yüksek olasılık verdiği sonucun gerçekleşme yüzdesi.<br>
-    <strong>Brier skoru:</strong> olasılık tahmininin ne kadar kalibre olduğunu ölçer — 0 mükemmel, 2 en kötü. 0.60-0.67 civarı, her maça %33/33/33 deme ("bilgisiz" tahmin) ile elde edilen referans seviyesidir; model bunun altında kalıyorsa gerçek bir sinyal üretiyor demektir.<br>
-    Sadece gerçek fikstürden seçilip kaydedilen tahminler otomatik puanlanır. En az 20-30 sonuçlanmış tahmin birikene kadar bu sayılara çok güvenme.
-  </div>
-
-  <h2 id="bahisler" style="font-size:1.1rem; font-weight:700; margin:32px 0 6px; scroll-margin-top:16px;">Önerilen Bahis Sonuçları</h2>
-  <p class="page-sub" style="margin-bottom:14px;">Önerilen Bahisler ve bahis sayfalarından kaydettiğin seçeneklerin gerçekleşme durumu</p>
-  <div class="status-line" id="recStatusText">Yükleniyor…</div>
-
-  <div class="panel controls" style="margin-bottom:18px;">
-    <div style="min-width:260px;">
-      <label for="fBatch">Kayıt</label>
-      <select id="fBatch"><option value="">Tüm kayıtlar</option></select>
+  <!-- Bahis sekmelerinde görünen filtreler -->
+  <div id="recFilters" style="display:none;">
+    <div class="panel controls" style="margin-bottom:10px;">
+      <div style="min-width:260px;">
+        <label for="fBatch">Kayıt</label>
+        <select id="fBatch"><option value="">Tüm kayıtlar</option></select>
+      </div>
+      <div>
+        <label for="fPage">Sayfa / bahis türü</label>
+        <select id="fPage"><option value="">Tüm sayfalar</option></select>
+      </div>
+      <div>
+        <label for="fOption">Seçenek</label>
+        <select id="fOption"><option value="">Tüm seçenekler</option></select>
+      </div>
+      <div>
+        <label for="fLeague">Lig</label>
+        <select id="fLeague"><option value="">Tüm ligler</option></select>
+      </div>
+      <div>
+        <label for="fStart">Maç tarihi, başlangıç</label>
+        <input type="date" id="fStart">
+      </div>
+      <div>
+        <label for="fEnd">Bitiş</label>
+        <input type="date" id="fEnd">
+      </div>
+      <div>
+        <button class="secondary" id="fReset">Filtreleri Temizle</button>
+      </div>
     </div>
-    <div>
-      <label for="fPage">Sayfa / bahis türü</label>
-      <select id="fPage"><option value="">Tüm sayfalar</option></select>
-    </div>
-    <div>
-      <label for="fOption">Seçenek</label>
-      <select id="fOption"><option value="">Tüm seçenekler</option></select>
-    </div>
-    <div>
-      <label for="fLeague">Lig</label>
-      <select id="fLeague"><option value="">Tüm ligler</option></select>
-    </div>
-    <div>
-      <label for="fStart">Maç tarihi, başlangıç</label>
-      <input type="date" id="fStart">
-    </div>
-    <div>
-      <label for="fEnd">Bitiş</label>
-      <input type="date" id="fEnd">
-    </div>
-    <div>
-      <button class="secondary" id="fReset">Filtreleri Temizle</button>
-    </div>
+    <div class="status-line" id="recStatusText" style="margin-bottom:18px;">Yükleniyor…</div>
   </div>
 
-  <div class="summary-grid">
-    <div class="stat-card"><div class="num" id="recStatTotal">—</div><div class="lbl">Toplam öneri</div></div>
-    <div class="stat-card"><div class="num" id="recStatScored">—</div><div class="lbl">Sonuçlanan</div></div>
-    <div class="stat-card"><div class="num" id="recStatHitRate">—</div><div class="lbl">Gerçekleşme oranı</div></div>
-  </div>
+  <!-- 1) Tahmin sonuçları (Tek Maç ve Hafta Sonu Kuponu'ndan kaydedilenler) -->
+  <section class="tabpane active" id="tab-tahmin">
+    <div class="status-line" id="statusText">Yükleniyor…</div>
+    <div class="summary-grid">
+      <div class="stat-card"><div class="num" id="statTotal">—</div><div class="lbl">Toplam tahmin</div></div>
+      <div class="stat-card"><div class="num" id="statScored">—</div><div class="lbl">Sonuçlanan</div></div>
+      <div class="stat-card"><div class="num" id="statAccuracy">—</div><div class="lbl">İsabet oranı (1X2)</div></div>
+      <div class="stat-card"><div class="num" id="statBrier">—</div><div class="lbl">Ort. Brier skoru</div></div>
+    </div>
 
-  <h3 style="font-size:0.95rem; font-weight:700; margin:20px 0 8px;">Bahis seçeneğine göre (gerçekleşme oranı yüksekten düşüğe)</h3>
-  <div class="table-wrap" style="margin-bottom:18px;">
-    <table class="datatable">
-      <thead>
-        <tr><th>Bahis seçeneği</th><th>Kayıtlı maç</th><th>Sonuçlanan</th><th>Gerçekleşen</th><th>Gerçekleşme oranı</th><th>Ort. model %</th></tr>
-      </thead>
-      <tbody id="recTypeBody"><tr><td colspan="6" style="color:var(--muted2);">Henüz kaydedilmiş bahis yok.</td></tr></tbody>
-    </table>
-  </div>
+    <div class="table-wrap">
+      <table class="datatable">
+        <thead>
+          <tr><th>Tarih / Saat</th><th>Maç</th><th>Tahmin (E/B/D)</th><th>Gerçek skor</th><th>Sonuç</th><th>Brier</th></tr>
+        </thead>
+        <tbody id="predBody"></tbody>
+      </table>
+    </div>
 
-  <div class="table-wrap">
-    <table class="datatable">
-      <thead>
-        <tr><th>Tarih / Saat</th><th>Maç</th><th>Seçenek</th><th>Model %</th><th>Gerçek Skor</th><th>Sonuç</th></tr>
-      </thead>
-      <tbody id="recResultsBody"></tbody>
-    </table>
-  </div>
+    <div class="note">
+      Tek Maç ve Hafta Sonu Kuponu sayfalarından kaydettiğin tahminler. Sadece bitmiş maçlar burada, henüz oynanmamış olanlar "Oynanmamış Maçlar" sekmesinde. En yeni maç en üstte.<br>
+      <strong>İsabet oranı:</strong> modelin en yüksek olasılık verdiği sonucun gerçekleşme yüzdesi.<br>
+      <strong>Brier skoru:</strong> olasılık tahmininin ne kadar kalibre olduğunu ölçer — 0 mükemmel, 2 en kötü. 0.60-0.67 civarı, her maça %33/33/33 deme ("bilgisiz" tahmin) ile elde edilen referans seviyesidir; model bunun altında kalıyorsa gerçek bir sinyal üretiyor demektir.<br>
+      Sadece gerçek fikstürden seçilip kaydedilen tahminler otomatik puanlanır. En az 20-30 sonuçlanmış tahmin birikene kadar bu sayılara çok güvenme.
+    </div>
+  </section>
 
-  <div class="note">
-    Bu tablo, Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydedilen seçeneklerin sonradan gerçekleşip gerçekleşmediğini gösterir.<br>
-    <strong>Bahis seçeneğine göre tablo:</strong> Her seçenek için (örneğin "İlk Yarı Sonucu: Beraberlik") kaç maç kaydettiğin, kaçı sonuçlandı, kaçı gerçekleşti ve gerçekleşme oranı yazar. Seçenekler gerçekleşme oranı en yüksekten en düşüğe sıralanır. "Ort. model %" modelin o bahislere ortalama kaç olasılık verdiğidir. İkisi birbirine yakınsa model o seçenekte iyi kalibre, gerçekleşme belirgin biçimde düşükse model fazla iyimser. <strong>Soluk satırlar</strong> 10'dan az sonuçlanmış maça dayanır, oranına güvenme. Örneğin 1 maçta 1 gerçekleşme %100 görünür ama bir şey kanıtlamaz.<br>
-    <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır, üstteki kartlar ve bahis türü tablosu da filtreye göre değişir. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
-    <strong>Belirsiz:</strong> maç bitmiş ama sonucu hesaplanamayan bahis (örneğin ilk yarı skoru veride yok).
-  </div>
+  <!-- 2) Bahis sonuçları (bitmiş maçlar) -->
+  <section class="tabpane" id="tab-bahis">
+    <div class="summary-grid">
+      <div class="stat-card"><div class="num" id="recStatTotal">—</div><div class="lbl">Kayıtlı bahis</div></div>
+      <div class="stat-card"><div class="num" id="recStatScored">—</div><div class="lbl">Sonuçlanan</div></div>
+      <div class="stat-card"><div class="num" id="recStatHitRate">—</div><div class="lbl">Gerçekleşme oranı</div></div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="datatable">
+        <thead>
+          <tr><th>Tarih / Saat</th><th>Maç</th><th>Seçenek</th><th>Model %</th><th>Gerçek Skor</th><th>Sonuç</th></tr>
+        </thead>
+        <tbody id="recResultsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydettiğin bahislerin bitmiş maçlardaki sonucu. En yeni maç en üstte, henüz oynanmamış maçlar "Oynanmamış Maçlar" sekmesinde.<br>
+      <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır ve bahis sekmelerinin hepsini etkiler. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
+      <strong>Belirsiz:</strong> maç bitmiş ama sonucu hesaplanamayan bahis (örneğin ilk yarı skoru veride yok).
+    </div>
+  </section>
+
+  <!-- 3) Seçeneklere göre oranlar -->
+  <section class="tabpane" id="tab-secenek">
+    <h3 class="sub-h" style="margin-top:0;">Bahis seçeneğine göre gerçekleşme oranı (yüksekten düşüğe)</h3>
+    <div class="table-wrap">
+      <table class="datatable">
+        <thead>
+          <tr><th>Bahis seçeneği</th><th>Kayıtlı maç</th><th>Sonuçlanan</th><th>Gerçekleşen</th><th>Gerçekleşme oranı</th><th>Ort. model %</th></tr>
+        </thead>
+        <tbody id="recTypeBody"><tr><td colspan="6" style="color:var(--muted2);">Henüz kaydedilmiş bahis yok.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      Her seçenek için (örneğin "İlk Yarı Sonucu: Beraberlik") kaç maç kaydettiğin, kaçı sonuçlandı, kaçı gerçekleşti ve gerçekleşme oranı yazar. Seçenekler gerçekleşme oranı en yüksekten en düşüğe sıralanır. "Ort. model %" modelin o bahislere ortalama kaç olasılık verdiğidir. İkisi birbirine yakınsa model o seçenekte iyi kalibre, gerçekleşme belirgin biçimde düşükse model fazla iyimser. <strong>Soluk satırlar</strong> 10'dan az sonuçlanmış maça dayanır, oranına güvenme. Örneğin 1 maçta 1 gerçekleşme %100 görünür ama bir şey kanıtlamaz.<br>
+      Üstteki filtreler bu tabloyu da değiştirir, örneğin tek bir kaydın ya da tek bir sayfanın seçenekleri için ayrı ayrı bakabilirsin.
+    </div>
+  </section>
+
+  <!-- 4) Oynanmamış maçlar -->
+  <section class="tabpane" id="tab-bekleyen">
+    <h3 class="sub-h" style="margin-top:0;">Bekleyen bahisler</h3>
+    <div class="table-wrap">
+      <table class="datatable">
+        <thead>
+          <tr><th>Tarih / Saat</th><th>Maç</th><th>Seçenek</th><th>Model %</th><th>Durum</th></tr>
+        </thead>
+        <tbody id="recPendingBody"></tbody>
+      </table>
+    </div>
+
+    <h3 class="sub-h">Bekleyen tahminler (Tek Maç ve Hafta Sonu Kuponu)</h3>
+    <div class="table-wrap">
+      <table class="datatable">
+        <thead>
+          <tr><th>Tarih / Saat</th><th>Maç</th><th>Tahmin (E/B/D)</th><th>Durum</th></tr>
+        </thead>
+        <tbody id="predPendingBody"></tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      Henüz oynanmamış ya da devam eden maçlar, en yakın maç en üstte. Üstteki filtreler sadece bekleyen bahisleri etkiler, bekleyen tahminleri etkilemez. Maç bitince sonuç ilgili sekmeye geçer.<br>
+      Canlı göstergesi tahminidir (maç saatinden hesaplanır, gerçek zamanlı veri yok). Veri güncelleme çalışınca (<code>fetch-matches</code>) maç sonuçlanmış olarak işaretlenir.
+    </div>
+  </section>
 </main>
 
 <script>
@@ -153,66 +216,112 @@ function liveMatchInfo(utcDateStr, status){
   return { label: 'Muhtemelen bitti (veri güncel değil)', live:true };
 }
 
-async function load(){
+const localDay = iso => new Date(iso).toLocaleDateString('sv-SE');          // YYYY-AA-GG (yerel)
+const dmShort = d => { if(!d) return ''; const p = String(d).slice(0,10).split('-'); return `${p[2]}.${p[1]}`; };
+const dtShort = iso => new Date(iso).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+const byDateDesc = (a,b) => String(b.utc_date || '').localeCompare(String(a.utc_date || ''));
+const byDateAsc  = (a,b) => String(a.utc_date || '').localeCompare(String(b.utc_date || ''));
+
+// Henüz bitmemiş maçın durum etiketi
+function pendingPill(utcDate, status){
+  const live = utcDate ? liveMatchInfo(utcDate, status) : { live:false, label:null };
+  if(live.live) return `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
+  if(live.label) return `<span class="pill pending">${live.label}</span>`;
+  return `<span class="pill pending">Bekliyor</span>`;
+}
+
+// ---------------- Sekmeler ----------------
+const TABS = ['tahmin', 'bahis', 'secenek', 'bekleyen'];
+const TAB_ALIAS = { bahisler: 'bahis' };       // eski bağlantılar
+
+function showTab(name, updateHash = true){
+  if(TAB_ALIAS[name]) name = TAB_ALIAS[name];
+  if(!TABS.includes(name)) name = 'tahmin';
+  TABS.forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    document.querySelector(`.tab[data-tab="${t}"]`).classList.toggle('active', t === name);
+  });
+  // Filtreler bahis sekmelerinde görünür, tahmin sekmesinde gizli
+  document.getElementById('recFilters').style.display = (name === 'tahmin') ? 'none' : '';
+  if(updateHash){ try{ history.replaceState(null, '', '#' + name); }catch(e){} }
+}
+document.querySelectorAll('.tabs .tab').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+window.addEventListener('hashchange', () => showTab(location.hash.replace('#',''), false));
+
+function setCount(id, n){ document.getElementById(id).textContent = (n === null || n === undefined) ? '' : n; }
+
+// ---------------- Tahmin sonuçları ----------------
+let PRED_ALL = [];
+
+async function loadPredictions(){
   const statusEl = document.getElementById('statusText');
   try{
-    const { data, error } = await sb.from('prediction_results').select('*').limit(500);
+    const { data, error } = await sb.from('prediction_results').select('*').limit(1000);
     if(error) throw error;
-
-    const rows = data || [];
-    const scored = rows.filter(r => r.status === 'FINISHED');
-    const correct = scored.filter(r => r.predicted_correctly === true);
-    const avgBrier = scored.length > 0
-      ? scored.reduce((s,r)=> s + Number(r.brier_score), 0) / scored.length
-      : null;
-
-    document.getElementById('statTotal').textContent = rows.length;
-    document.getElementById('statScored').textContent = scored.length;
-    document.getElementById('statAccuracy').textContent = scored.length > 0 ? `${(correct.length/scored.length*100).toFixed(0)}%` : '—';
-    document.getElementById('statBrier').textContent = avgBrier != null ? avgBrier.toFixed(3) : '—';
-
-    const body = document.getElementById('predBody');
-    body.innerHTML = '';
-    rows.forEach(r => {
-      const tr = document.createElement('tr');
-      const pctStr = `${(r.p_home*100).toFixed(0)}/${(r.p_draw*100).toFixed(0)}/${(r.p_away*100).toFixed(0)}`;
-      let resultCell;
-      const live = r.utc_date ? liveMatchInfo(r.utc_date, r.status) : { live:false };
-      if(r.status === 'FINISHED'){
-        const cls = r.predicted_correctly ? 'ok' : 'bad';
-        const label = r.predicted_correctly ? 'İsabetli' : 'İsabetsiz';
-        resultCell = `<span class="pill ${cls}">${label}</span>`;
-      } else if(live.live){
-        resultCell = `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
-      } else {
-        resultCell = `<span class="pill pending">Bekliyor</span>`;
-      }
-      const scoreStr = r.status === 'FINISHED' ? `${r.home_score} – ${r.away_score}` : (live.live ? `${r.home_score ?? '?'} – ${r.away_score ?? '?'}` : '—');
-      const brierStr = r.brier_score != null ? Number(r.brier_score).toFixed(3) : '—';
-      tr.innerHTML = `
-        <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : r.match_date}</td>
-        <td>${r.home_team_name} - ${r.away_team_name}</td>
-        <td>${pctStr}</td>
-        <td>${scoreStr}</td>
-        <td>${resultCell}</td>
-        <td>${brierStr}</td>
-      `;
-      body.appendChild(tr);
-    });
-
-    statusEl.textContent = `${rows.length} tahmin yüklendi.`;
+    PRED_ALL = data || [];
+    renderPredictions();
+    statusEl.textContent = `${PRED_ALL.length} tahmin yüklendi.`;
   }catch(err){
     console.error(err);
     statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
   }
 }
 
-const OLD_BATCH = '__eski__';
-let REC_ALL = [];   // veritabanından gelen tüm kayıtlar
+function renderPredictions(){
+  const rows = PRED_ALL;
+  const finished = rows.filter(r => r.status === 'FINISHED').sort(byDateDesc);
+  const pending = rows.filter(r => r.status !== 'FINISHED').sort(byDateAsc);
+  const correct = finished.filter(r => r.predicted_correctly === true);
+  const avgBrier = finished.length > 0
+    ? finished.reduce((s,r)=> s + Number(r.brier_score), 0) / finished.length
+    : null;
 
-const localDay = iso => new Date(iso).toLocaleDateString('sv-SE');          // YYYY-AA-GG (yerel)
-const dmShort = d => { if(!d) return ''; const p = String(d).slice(0,10).split('-'); return `${p[2]}.${p[1]}`; };
-const dtShort = iso => new Date(iso).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('statTotal').textContent = rows.length;
+  document.getElementById('statScored').textContent = finished.length;
+  document.getElementById('statAccuracy').textContent = finished.length > 0 ? `${(correct.length/finished.length*100).toFixed(0)}%` : '—';
+  document.getElementById('statBrier').textContent = avgBrier != null ? avgBrier.toFixed(3) : '—';
+
+  const dateCell = r => r.utc_date ? dtShort(r.utc_date) : r.match_date;
+  const pctStr = r => `${(r.p_home*100).toFixed(0)}/${(r.p_draw*100).toFixed(0)}/${(r.p_away*100).toFixed(0)}`;
+
+  const body = document.getElementById('predBody');
+  body.innerHTML = '';
+  if(finished.length === 0) body.innerHTML = '<tr><td colspan="6" style="color:var(--muted2);">Henüz sonuçlanmış tahmin yok.</td></tr>';
+  finished.forEach(r => {
+    const cls = r.predicted_correctly ? 'ok' : 'bad';
+    const label = r.predicted_correctly ? 'İsabetli' : 'İsabetsiz';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${dateCell(r)}</td>
+      <td>${r.home_team_name} - ${r.away_team_name}</td>
+      <td>${pctStr(r)}</td>
+      <td>${r.home_score} – ${r.away_score}</td>
+      <td><span class="pill ${cls}">${label}</span></td>
+      <td>${r.brier_score != null ? Number(r.brier_score).toFixed(3) : '—'}</td>`;
+    body.appendChild(tr);
+  });
+
+  const pbody = document.getElementById('predPendingBody');
+  pbody.innerHTML = '';
+  if(pending.length === 0) pbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted2);">Bekleyen tahmin yok.</td></tr>';
+  pending.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${dateCell(r)}</td>
+      <td>${r.home_team_name} - ${r.away_team_name}</td>
+      <td>${pctStr(r)}</td>
+      <td>${pendingPill(r.utc_date, r.status)}</td>`;
+    pbody.appendChild(tr);
+  });
+
+  setCount('cntTahmin', finished.length ? ` (${finished.length})` : '');
+  updatePendingCount();
+}
+
+// ---------------- Bahis sonuçları ----------------
+const OLD_BATCH = '__eski__';
+let REC_ALL = [];        // veritabanından gelen tüm kayıtlar
+let REC_PENDING_N = 0;   // filtreye uyan bekleyen bahis sayısı
 
 async function loadRecommendations(){
   const recStatusEl = document.getElementById('recStatusText');
@@ -295,32 +404,29 @@ function currentRecRows(){
 function renderRecommendations(){
   const recStatusEl = document.getElementById('recStatusText');
   const rows = currentRecRows();
-  const scored = rows.filter(r => r.status === 'FINISHED' && r.hit !== null && r.hit !== undefined);
+  const finished = rows.filter(r => r.status === 'FINISHED').sort(byDateDesc);
+  const pending = rows.filter(r => r.status !== 'FINISHED').sort(byDateAsc);
+  const scored = finished.filter(r => r.hit !== null && r.hit !== undefined);
   const hits = scored.filter(r => r.hit === true);
+  REC_PENDING_N = pending.length;
 
+  // Kartlar
   document.getElementById('recStatTotal').textContent = rows.length;
   document.getElementById('recStatScored').textContent = scored.length;
   document.getElementById('recStatHitRate').textContent = scored.length > 0 ? `${(hits.length/scored.length*100).toFixed(0)}%` : '—';
 
+  // Bitmiş bahisler
   const body = document.getElementById('recResultsBody');
   body.innerHTML = '';
-  if(rows.length === 0){
-    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted2);">Seçtiğin filtrelere uyan kayıtlı bahis yok.</td></tr>';
+  if(finished.length === 0){
+    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted2);">Seçtiğin filtrelere uyan sonuçlanmış bahis yok.</td></tr>';
   }
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
-    const live = r.utc_date ? liveMatchInfo(r.utc_date, r.status) : { live:false };
+  finished.forEach(r => {
     let resultCell;
-    if(r.status === 'FINISHED' && (r.hit === null || r.hit === undefined)){
+    if(r.hit === null || r.hit === undefined){
       resultCell = `<span class="pill pending" title="Maç bitti ama sonuç hesaplanamadı (örneğin ilk yarı skoru yok)">Belirsiz</span>`;
-    } else if(r.status === 'FINISHED'){
-      const cls = r.hit ? 'ok' : 'bad';
-      const label = r.hit ? 'Gerçekleşti' : 'Gerçekleşmedi';
-      resultCell = `<span class="pill ${cls}">${label}</span>`;
-    } else if(live.live){
-      resultCell = `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
     } else {
-      resultCell = `<span class="pill pending">Bekliyor</span>`;
+      resultCell = `<span class="pill ${r.hit ? 'ok' : 'bad'}">${r.hit ? 'Gerçekleşti' : 'Gerçekleşmedi'}</span>`;
     }
 
     // İlk yarı seçenekleri için ilk yarı skorunu, diğerleri için maç sonu skorunu göster
@@ -330,24 +436,39 @@ function renderRecommendations(){
     if(isHTFT){
       const ht = (r.home_ht_score != null && r.away_ht_score != null) ? `${r.home_ht_score} – ${r.away_ht_score}` : '?';
       const ft = (r.home_score != null && r.away_score != null) ? `${r.home_score} – ${r.away_score}` : '?';
-      if(r.status === 'FINISHED' || live.live) scoreCell = `İY ${ht}, MS ${ft}`;
+      scoreCell = `İY ${ht}, MS ${ft}`;
     } else if(isHT && r.home_ht_score != null && r.away_ht_score != null){
       scoreCell = `${r.home_ht_score} – ${r.away_ht_score} (İY)`;
-    } else if(!isHT && !isHTFT && r.home_score != null && r.away_score != null){
+    } else if(!isHT && r.home_score != null && r.away_score != null){
       scoreCell = `${r.home_score} – ${r.away_score}`;
-    } else if(live.live){
-      scoreCell = `${r.home_score ?? '?'} – ${r.away_score ?? '?'}`;
     }
 
+    const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—'}</td>
+      <td>${r.utc_date ? dtShort(r.utc_date) : '—'}</td>
       <td>${r.home_team_name} - ${r.away_team_name}</td>
       <td>${r.market_label}</td>
       <td style="color:var(--accent); font-weight:600;">${(r.model_pct*100).toFixed(1)}%</td>
-      <td style="font-variant-numeric: tabular-nums;">${scoreCell}</td>
-      <td>${resultCell}</td>
-    `;
+      <td class="num">${scoreCell}</td>
+      <td>${resultCell}</td>`;
     body.appendChild(tr);
+  });
+
+  // Bekleyen bahisler
+  const pbody = document.getElementById('recPendingBody');
+  pbody.innerHTML = '';
+  if(pending.length === 0){
+    pbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted2);">Seçtiğin filtrelere uyan bekleyen bahis yok.</td></tr>';
+  }
+  pending.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.utc_date ? dtShort(r.utc_date) : '—'}</td>
+      <td>${r.home_team_name} - ${r.away_team_name}</td>
+      <td>${r.market_label}</td>
+      <td style="color:var(--accent); font-weight:600;">${(r.model_pct*100).toFixed(1)}%</td>
+      <td>${pendingPill(r.utc_date, r.status)}</td>`;
+    pbody.appendChild(tr);
   });
 
   // Bahis seçeneğine göre özet (filtreye göre), gerçekleşme oranına göre sıralı
@@ -376,15 +497,24 @@ function renderRecommendations(){
     if(o.scored < 10) tr.style.opacity = '0.6';
     tr.innerHTML = `
       <td>${o.label}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o.total}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o.scored}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o.hit}</td>
-      <td style="color:var(--accent); font-weight:700; font-variant-numeric: tabular-nums;">${o.scored ? (o.hit/o.scored*100).toFixed(0) + '%' : '—'}</td>
-      <td style="font-variant-numeric: tabular-nums;">${o.scored ? (o.pctSum/o.scored*100).toFixed(0) + '%' : '—'}</td>`;
+      <td class="num">${o.total}</td>
+      <td class="num">${o.scored}</td>
+      <td class="num">${o.hit}</td>
+      <td class="num" style="color:var(--accent); font-weight:700;">${o.scored ? (o.hit/o.scored*100).toFixed(0) + '%' : '—'}</td>
+      <td class="num">${o.scored ? (o.pctSum/o.scored*100).toFixed(0) + '%' : '—'}</td>`;
     typeBody.appendChild(tr);
   });
 
+  setCount('cntBahis', finished.length ? ` (${finished.length})` : '');
+  updatePendingCount();
   recStatusEl.textContent = `${rows.length} bahis gösteriliyor (toplam ${REC_ALL.length} kayıtlı satır).`;
+}
+
+// "Oynanmamış Maçlar" sekmesindeki sayı: bekleyen tahmin + bekleyen bahis
+function updatePendingCount(){
+  const predPending = PRED_ALL.filter(r => r.status !== 'FINISHED').length;
+  const n = predPending + REC_PENDING_N;
+  setCount('cntBekleyen', n ? ` (${n})` : '');
 }
 
 ['fBatch','fPage','fOption','fLeague','fStart','fEnd'].forEach(id =>
@@ -394,7 +524,8 @@ document.getElementById('fReset').addEventListener('click', () => {
   renderRecommendations();
 });
 
-load();
+showTab(location.hash.replace('#',''), false);
+loadPredictions();
 loadRecommendations();
 </script>
 </body>
