@@ -332,7 +332,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       <td class="num sep dim">${fmtPct(it.homeExact)} / ${fmtPct(it.awayExact)}</td>`;
     body.appendChild(tr);
   });
-  setSaveRows(buildSaveRows(shown, N));
+  setSaveRows(buildSaveRows(shown, N), makeCtx('Handikap', startVal, endVal, leagueName, [selText('lineSelect'), 'en az olasılık: ' + selText('minSelect')]));
   statusEl.textContent = `${items.length} maç tarandı, ${shown.length} tanesi listelendi.`;
 });
 
@@ -354,8 +354,14 @@ function buildSaveRows(list, N){
 // ---- Doğrulama için kaydet: listenin en olası ilk 25 bahsi ----
 const SAVE_LIMIT = 25;
 let SAVE_ROWS = [];
-function setSaveRows(rows){
+let SAVE_CTX = null;   // kaydın hangi sayfa, tarih aralığı, lig ve seçeneklerle yapıldığı
+const selText = id => { const e = document.getElementById(id); return (e && e.selectedIndex >= 0) ? e.options[e.selectedIndex].textContent : ''; };
+function makeCtx(page, start, end, leagueName, optionParts){
+  return { page, start, end, league: leagueName || 'Tüm ligler', option: optionParts.filter(Boolean).join(', ') };
+}
+function setSaveRows(rows, ctx){
   SAVE_ROWS = rows.slice(0, SAVE_LIMIT);
+  SAVE_CTX = ctx || null;
   const btn = document.getElementById('saveBtn');
   btn.disabled = SAVE_ROWS.length === 0;
   btn.textContent = SAVE_ROWS.length === 0 ? "İlk 25'i Doğrulamaya Kaydet"
@@ -364,14 +370,20 @@ function setSaveRows(rows){
 }
 document.getElementById('saveBtn').addEventListener('click', async () => {
   const st = document.getElementById('saveStatus');
-  if(SAVE_ROWS.length === 0) return;
+  const btn = document.getElementById('saveBtn');
+  if(SAVE_ROWS.length === 0 || !SAVE_CTX) return;
+  btn.disabled = true;                       // aynı listeyi iki kez kaydetmeyi önler
   st.textContent = 'Kaydediliyor…';
   try{
-    const { error } = await sb.from('market_recommendations').upsert(SAVE_ROWS, { onConflict: 'match_id,market_key' });
+    const batchId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2));
+    const rows = SAVE_ROWS.map(r => ({ ...r, batch_id: batchId, batch_page: SAVE_CTX.page,
+      batch_start: SAVE_CTX.start, batch_end: SAVE_CTX.end, batch_league: SAVE_CTX.league, batch_option: SAVE_CTX.option }));
+    const { error } = await sb.from('market_recommendations').upsert(rows, { onConflict: 'match_id,market_key,batch_id' });
     if(error) throw error;
-    st.textContent = `${SAVE_ROWS.length} bahis kaydedildi. Sonuçlarını Doğrulama Paneli'nde takip edebilirsin.`;
+    st.textContent = `${rows.length} bahis kaydedildi. Sonuçlarını Doğrulama Paneli'nde sayfa, tarih ve seçeneğe göre süzerek takip edebilirsin.`;
   }catch(err){
     console.error(err);
+    btn.disabled = false;
     st.textContent = 'Hata: ' + (err.message || err);
   }
 });
