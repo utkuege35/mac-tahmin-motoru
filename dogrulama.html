@@ -10,15 +10,6 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
-  .tabs{ display:flex; gap:4px; margin:4px 0 22px; border-bottom:1px solid var(--line); overflow-x:auto; }
-  .tabs .tab{
-    background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent;
-    border-radius: 0; padding: 11px 18px; font-weight: 600; font-size: 0.86rem; white-space: nowrap;
-  }
-  .tabs .tab:hover{ filter: none; color: var(--ink); }
-  .tabs .tab.active{ color: var(--accent); border-bottom-color: var(--accent); }
-  .tabs .tab .cnt{ margin-left: 6px; font-size: 0.72rem; font-weight: 600; color: var(--muted2); }
-  .tabs .tab.active .cnt{ color: var(--accent); }
   .tabpane{ display:none; }
   .tabpane.active{ display:block; }
   .sub-h{ font-size:0.95rem; font-weight:700; margin:22px 0 8px; }
@@ -32,7 +23,15 @@
   <nav>
     <a href="index.html">Tek Maç</a>
     <a href="kupon.html">Hafta Sonu Kuponu</a>
-    <a href="dogrulama.html" class="active">Doğrulama Paneli</a>
+    <details class="nav-group" open>
+      <summary><a href="dogrulama.html" class="active">Doğrulama Paneli</a></summary>
+      <div class="nav-sub">
+        <a href="dogrulama.html#tahmin" data-tab="tahmin">Tahmin Sonuçları<span class="cnt" id="cntTahmin"></span></a>
+        <a href="dogrulama.html#bahis" data-tab="bahis">Bahis Sonuçları<span class="cnt" id="cntBahis"></span></a>
+        <a href="dogrulama.html#secenek" data-tab="secenek">Seçeneklere Göre Oranlar</a>
+        <a href="dogrulama.html#bekleyen" data-tab="bekleyen">Oynanmamış Maçlar<span class="cnt" id="cntBekleyen"></span></a>
+      </div>
+    </details>
     <a href="istatistikler.html">İstatistikler</a>
     <a href="oneriler.html">Önerilen Bahisler</a>
     <a href="macsonucu.html">Maç Sonucu</a>
@@ -46,8 +45,8 @@
     <h3>Nasıl çalışır</h3>
     <ol>
       <li>Kaydettiğin tahmin ve bahisler burada listelenir</li>
-      <li>Oynanmamış maçlar ayrı sekmede bekler, bitince otomatik puanlanır</li>
-      <li>Bahis seçeneklerinin gerçekleşme oranına zamanla bak</li>
+      <li>Sol menüdeki alt başlıklardan bölümler arasında geç</li>
+      <li>Oynanmamış maçlar ayrı bölümde bekler, bitince otomatik puanlanır</li>
     </ol>
   </div>
   <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
@@ -55,14 +54,7 @@
 
 <main class="main">
   <h1 class="page-title">Doğrulama Paneli</h1>
-  <p class="page-sub">Kaydettiğin tahmin ve bahislerin gerçek sonuçlarla karşılaştırması</p>
-
-  <div class="tabs" id="tabs" role="tablist">
-    <button class="tab active" data-tab="tahmin">Tahmin Sonuçları<span class="cnt" id="cntTahmin"></span></button>
-    <button class="tab" data-tab="bahis">Bahis Sonuçları<span class="cnt" id="cntBahis"></span></button>
-    <button class="tab" data-tab="secenek">Seçeneklere Göre Oranlar</button>
-    <button class="tab" data-tab="bekleyen">Oynanmamış Maçlar<span class="cnt" id="cntBekleyen"></span></button>
-  </div>
+  <p class="page-sub" id="secTitle">Kaydettiğin tahmin ve bahislerin gerçek sonuçlarla karşılaştırması</p>
 
   <!-- Bahis sekmelerinde görünen filtreler -->
   <div id="recFilters" style="display:none;">
@@ -118,7 +110,7 @@
     </div>
 
     <div class="note">
-      Tek Maç ve Hafta Sonu Kuponu sayfalarından kaydettiğin tahminler. Sadece bitmiş maçlar burada, henüz oynanmamış olanlar "Oynanmamış Maçlar" sekmesinde. En yeni maç en üstte.<br>
+      Tek Maç ve Hafta Sonu Kuponu sayfalarından kaydettiğin tahminler. Sadece bitmiş maçlar burada, henüz oynanmamış olanlar menüdeki "Oynanmamış Maçlar" bölümünde. En yeni maç en üstte.<br>
       <strong>İsabet oranı:</strong> modelin en yüksek olasılık verdiği sonucun gerçekleşme yüzdesi.<br>
       <strong>Brier skoru:</strong> olasılık tahmininin ne kadar kalibre olduğunu ölçer — 0 mükemmel, 2 en kötü. 0.60-0.67 civarı, her maça %33/33/33 deme ("bilgisiz" tahmin) ile elde edilen referans seviyesidir; model bunun altında kalıyorsa gerçek bir sinyal üretiyor demektir.<br>
       Sadece gerçek fikstürden seçilip kaydedilen tahminler otomatik puanlanır. En az 20-30 sonuçlanmış tahmin birikene kadar bu sayılara çok güvenme.
@@ -143,8 +135,8 @@
     </div>
 
     <div class="note">
-      Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydettiğin bahislerin bitmiş maçlardaki sonucu. En yeni maç en üstte, henüz oynanmamış maçlar "Oynanmamış Maçlar" sekmesinde.<br>
-      <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır ve bahis sekmelerinin hepsini etkiler. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
+      Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydettiğin bahislerin bitmiş maçlardaki sonucu. En yeni maç en üstte, henüz oynanmamış maçlar menüdeki "Oynanmamış Maçlar" bölümünde.<br>
+      <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır ve bahis bölümlerinin hepsini etkiler. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
       <strong>Belirsiz:</strong> maç bitmiş ama sonucu hesaplanamayan bahis (örneğin ilk yarı skoru veride yok).
     </div>
   </section>
@@ -190,7 +182,7 @@
     </div>
 
     <div class="note">
-      Henüz oynanmamış ya da devam eden maçlar, en yakın maç en üstte. Üstteki filtreler sadece bekleyen bahisleri etkiler, bekleyen tahminleri etkilemez. Maç bitince sonuç ilgili sekmeye geçer.<br>
+      Henüz oynanmamış ya da devam eden maçlar, en yakın maç en üstte. Üstteki filtreler sadece bekleyen bahisleri etkiler, bekleyen tahminleri etkilemez. Maç bitince sonuç ilgili bölüme geçer.<br>
       Canlı göstergesi tahminidir (maç saatinden hesaplanır, gerçek zamanlı veri yok). Veri güncelleme çalışınca (<code>fetch-matches</code>) maç sonuçlanmış olarak işaretlenir.
     </div>
   </section>
@@ -230,23 +222,27 @@ function pendingPill(utcDate, status){
   return `<span class="pill pending">Bekliyor</span>`;
 }
 
-// ---------------- Sekmeler ----------------
+// ---------------- Bölümler (sol menüdeki alt başlıklar) ----------------
 const TABS = ['tahmin', 'bahis', 'secenek', 'bekleyen'];
 const TAB_ALIAS = { bahisler: 'bahis' };       // eski bağlantılar
+const TAB_TITLES = {
+  tahmin:   'Tahmin Sonuçları: Tek Maç ve Hafta Sonu Kuponu\'ndan kaydettiğin tahminlerin bitmiş maçları',
+  bahis:    'Bahis Sonuçları: bahis sayfalarından kaydettiğin bahislerin bitmiş maçları',
+  secenek:  'Seçeneklere Göre Oranlar: her bahis seçeneğinin gerçekleşme oranı',
+  bekleyen: 'Oynanmamış Maçlar: henüz oynanmamış ve devam eden maçlar',
+};
 
-function showTab(name, updateHash = true){
+function showTab(name){
   if(TAB_ALIAS[name]) name = TAB_ALIAS[name];
   if(!TABS.includes(name)) name = 'tahmin';
-  TABS.forEach(t => {
-    document.getElementById('tab-' + t).classList.toggle('active', t === name);
-    document.querySelector(`.tab[data-tab="${t}"]`).classList.toggle('active', t === name);
-  });
-  // Filtreler bahis sekmelerinde görünür, tahmin sekmesinde gizli
+  TABS.forEach(t => document.getElementById('tab-' + t).classList.toggle('active', t === name));
+  // Sol menüdeki alt başlıkta seçili olanı vurgula
+  document.querySelectorAll('.nav-sub a[data-tab]').forEach(a => a.classList.toggle('active', a.dataset.tab === name));
+  document.getElementById('secTitle').textContent = TAB_TITLES[name];
+  // Filtreler bahis bölümlerinde görünür, tahmin bölümünde gizli
   document.getElementById('recFilters').style.display = (name === 'tahmin') ? 'none' : '';
-  if(updateHash){ try{ history.replaceState(null, '', '#' + name); }catch(e){} }
 }
-document.querySelectorAll('.tabs .tab').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
-window.addEventListener('hashchange', () => showTab(location.hash.replace('#',''), false));
+window.addEventListener('hashchange', () => showTab(location.hash.replace('#','')));
 
 function setCount(id, n){ document.getElementById(id).textContent = (n === null || n === undefined) ? '' : n; }
 
@@ -510,7 +506,7 @@ function renderRecommendations(){
   recStatusEl.textContent = `${rows.length} bahis gösteriliyor (toplam ${REC_ALL.length} kayıtlı satır).`;
 }
 
-// "Oynanmamış Maçlar" sekmesindeki sayı: bekleyen tahmin + bekleyen bahis
+// menüdeki "Oynanmamış Maçlar" bölümündeki sayı: bekleyen tahmin + bekleyen bahis
 function updatePendingCount(){
   const predPending = PRED_ALL.filter(r => r.status !== 'FINISHED').length;
   const n = predPending + REC_PENDING_N;
@@ -524,7 +520,7 @@ document.getElementById('fReset').addEventListener('click', () => {
   renderRecommendations();
 });
 
-showTab(location.hash.replace('#',''), false);
+showTab(location.hash.replace('#',''));
 loadPredictions();
 loadRecommendations();
 </script>
