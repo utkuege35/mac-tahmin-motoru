@@ -92,6 +92,11 @@
     </table>
   </div>
 
+  <div class="panel" style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <button class="secondary" id="saveBtn" disabled>İlk 25'i Doğrulamaya Kaydet</button>
+    <span id="saveStatus" style="font-size:0.74rem; color: var(--muted2);"></span>
+  </div>
+
   <div class="note">
     <strong>KG Var:</strong> iki takım da en az 1 gol atar. <strong>KG Yok:</strong> en az bir takım gol atamaz (0-0 dahil). İkisinin olasılığı toplamı %100'dür.<br>
     <strong>Beklenen gol:</strong> modelin ev sahibi ve deplasman için beklediği gol.<br>
@@ -268,6 +273,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const minP = Number(document.getElementById('minSelect').value);
 
   statusEl.textContent = 'Maçlar hesaplanıyor…';
+  setSaveRows([]);
   let fixQuery = sb.from('matches')
     .select('id, competition_id, home_team_id, away_team_id, utc_date, status')
     .in('status', ['SCHEDULED','TIMED','IN_PLAY','PAUSED'])
@@ -341,7 +347,50 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       ${baselineCell(it.f.competition_id)}`;
     body.appendChild(tr);
   });
+  setSaveRows(buildSaveRows(shown, mode));
   statusEl.textContent = `${items.length} maç tarandı, ${shown.length} tanesi listelendi.`;
+});
+
+// KG Var ya da KG Yok: "Göster" seçimine göre, "en olası"da maç başına yüksek olan
+function buildSaveRows(list, mode){
+  return list.filter(it => !it.live.live).map(it => {
+    const yes = mode === 'yes' ? true : (mode === 'no' ? false : it.r.pYes >= it.r.pNo);
+    const b = BASELINE[it.f.competition_id];
+    const baseYes = (b && b.n >= MIN_BASELINE_N) ? b.btts / b.n : null;
+    return {
+      match_id: it.f.id,
+      market_key: yes ? 'btts' : 'nobtts',
+      market_label: yes ? 'Karşılıklı Gol Var' : 'Karşılıklı Gol Yok',
+      model_pct: yes ? it.r.pYes : it.r.pNo,
+      base_pct: baseYes == null ? null : (yes ? baseYes : 1 - baseYes),
+      source: 'Karşılıklı Gol',
+    };
+  }).sort((a,b) => b.model_pct - a.model_pct);
+}
+
+// ---- Doğrulama için kaydet: listenin en olası ilk 25 bahsi ----
+const SAVE_LIMIT = 25;
+let SAVE_ROWS = [];
+function setSaveRows(rows){
+  SAVE_ROWS = rows.slice(0, SAVE_LIMIT);
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = SAVE_ROWS.length === 0;
+  btn.textContent = SAVE_ROWS.length === 0 ? "İlk 25'i Doğrulamaya Kaydet"
+    : (SAVE_ROWS.length < SAVE_LIMIT ? `${SAVE_ROWS.length} bahsi Doğrulamaya Kaydet` : "İlk 25'i Doğrulamaya Kaydet");
+  document.getElementById('saveStatus').textContent = '';
+}
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const st = document.getElementById('saveStatus');
+  if(SAVE_ROWS.length === 0) return;
+  st.textContent = 'Kaydediliyor…';
+  try{
+    const { error } = await sb.from('market_recommendations').upsert(SAVE_ROWS, { onConflict: 'match_id,market_key' });
+    if(error) throw error;
+    st.textContent = `${SAVE_ROWS.length} bahis kaydedildi. Sonuçlarını Doğrulama Paneli'nde takip edebilirsin.`;
+  }catch(err){
+    console.error(err);
+    st.textContent = 'Hata: ' + (err.message || err);
+  }
 });
 
 init();
