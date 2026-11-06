@@ -69,6 +69,36 @@
   <p class="page-sub" style="margin-bottom:14px;">Önerilen Bahisler ve bahis sayfalarından kaydettiğin seçeneklerin gerçekleşme durumu</p>
   <div class="status-line" id="recStatusText">Yükleniyor…</div>
 
+  <div class="panel controls" style="margin-bottom:18px;">
+    <div style="min-width:260px;">
+      <label for="fBatch">Kayıt</label>
+      <select id="fBatch"><option value="">Tüm kayıtlar</option></select>
+    </div>
+    <div>
+      <label for="fPage">Sayfa / bahis türü</label>
+      <select id="fPage"><option value="">Tüm sayfalar</option></select>
+    </div>
+    <div>
+      <label for="fOption">Seçenek</label>
+      <select id="fOption"><option value="">Tüm seçenekler</option></select>
+    </div>
+    <div>
+      <label for="fLeague">Lig</label>
+      <select id="fLeague"><option value="">Tüm ligler</option></select>
+    </div>
+    <div>
+      <label for="fStart">Maç tarihi, başlangıç</label>
+      <input type="date" id="fStart">
+    </div>
+    <div>
+      <label for="fEnd">Bitiş</label>
+      <input type="date" id="fEnd">
+    </div>
+    <div>
+      <button class="secondary" id="fReset">Filtreleri Temizle</button>
+    </div>
+  </div>
+
   <div class="summary-grid">
     <div class="stat-card"><div class="num" id="recStatTotal">—</div><div class="lbl">Toplam öneri</div></div>
     <div class="stat-card"><div class="num" id="recStatScored">—</div><div class="lbl">Sonuçlanan</div></div>
@@ -97,6 +127,7 @@
   <div class="note">
     Bu tablo, Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydedilen seçeneklerin sonradan gerçekleşip gerçekleşmediğini gösterir.<br>
     <strong>Bahis türüne göre tablo:</strong> "Gerçekleşme" kaydettiğin bahislerin gerçekte ne sıklıkla tuttuğu, "Ort. model %" ise modelin bu bahislere ortalama kaç olasılık verdiği. İkisi birbirine yakınsa model o bahis türünde iyi kalibre. Gerçekleşme belirgin biçimde düşükse model o türde fazla iyimser. Türler birbirinden çok farklı olduğu için tek bir genel orana değil buna bak, ve her tür için en az 20-30 sonuçlanmış bahis birikene kadar sayılara çok güvenme.<br>
+    <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır, üstteki kartlar ve bahis türü tablosu da filtreye göre değişir. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
     <strong>Belirsiz:</strong> maç bitmiş ama sonucu hesaplanamayan bahis (örneğin ilk yarı skoru veride yok).
   </div>
 </main>
@@ -190,99 +221,187 @@ function betGroup(key){
   return 'Diğer';
 }
 
+const OLD_BATCH = '__eski__';
+let REC_ALL = [];   // veritabanından gelen tüm kayıtlar
+
+const localDay = iso => new Date(iso).toLocaleDateString('sv-SE');          // YYYY-AA-GG (yerel)
+const dmShort = d => { if(!d) return ''; const p = String(d).slice(0,10).split('-'); return `${p[2]}.${p[1]}`; };
+const dtShort = iso => new Date(iso).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+
 async function loadRecommendations(){
   const recStatusEl = document.getElementById('recStatusText');
   try{
     const { data, error } = await sb.from('market_recommendation_results').select('*').limit(1000);
     if(error) throw error;
-
-    const rows = data || [];
-    const scored = rows.filter(r => r.status === 'FINISHED' && r.hit !== null && r.hit !== undefined);
-    const hits = scored.filter(r => r.hit === true);
-
-    document.getElementById('recStatTotal').textContent = rows.length;
-    document.getElementById('recStatScored').textContent = scored.length;
-    document.getElementById('recStatHitRate').textContent = scored.length > 0 ? `${(hits.length/scored.length*100).toFixed(0)}%` : '—';
-
-    const body = document.getElementById('recResultsBody');
-    body.innerHTML = '';
-    rows.forEach(r => {
-      const tr = document.createElement('tr');
-      const live = r.utc_date ? liveMatchInfo(r.utc_date, r.status) : { live:false };
-      let resultCell;
-      if(r.status === 'FINISHED' && (r.hit === null || r.hit === undefined)){
-        resultCell = `<span class="pill pending" title="Maç bitti ama sonuç hesaplanamadı (örneğin ilk yarı skoru yok)">Belirsiz</span>`;
-      } else if(r.status === 'FINISHED'){
-        const cls = r.hit ? 'ok' : 'bad';
-        const label = r.hit ? 'Gerçekleşti' : 'Gerçekleşmedi';
-        resultCell = `<span class="pill ${cls}">${label}</span>`;
-      } else if(live.live){
-        resultCell = `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
-      } else {
-        resultCell = `<span class="pill pending">Bekliyor</span>`;
-      }
-
-      // İlk yarı seçenekleri için ilk yarı skorunu, diğerleri için maç sonu skorunu göster
-      let scoreCell = '—';
-      const isHT = r.market_key && r.market_key.startsWith('ht');
-      const isHTFT = r.market_key && r.market_key.startsWith('htft_');
-      if(isHTFT){
-        // İlk yarı / maç sonu: iki skoru birden göster
-        const ht = (r.home_ht_score != null && r.away_ht_score != null) ? `${r.home_ht_score} – ${r.away_ht_score}` : '?';
-        const ft = (r.home_score != null && r.away_score != null) ? `${r.home_score} – ${r.away_score}` : '?';
-        if(r.status === 'FINISHED' || live.live) scoreCell = `İY ${ht}, MS ${ft}`;
-      } else if(isHT && r.home_ht_score != null && r.away_ht_score != null){
-        scoreCell = `${r.home_ht_score} – ${r.away_ht_score} (İY)`;
-      } else if(!isHT && !isHTFT && r.home_score != null && r.away_score != null){
-        scoreCell = `${r.home_score} – ${r.away_score}`;
-      } else if(live.live){
-        scoreCell = `${r.home_score ?? '?'} – ${r.away_score ?? '?'}`;
-      }
-
-      tr.innerHTML = `
-        <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—'}</td>
-        <td>${r.home_team_name} - ${r.away_team_name}</td>
-        <td>${r.market_label}</td>
-        <td style="color:var(--accent); font-weight:600;">${(r.model_pct*100).toFixed(1)}%</td>
-        <td style="font-variant-numeric: tabular-nums;">${scoreCell}</td>
-        <td>${resultCell}</td>
-      `;
-      body.appendChild(tr);
-    });
-
-    // Bahis türüne göre özet
-    const groups = {};
-    scored.forEach(r => {
-      const g = betGroup(r.market_key);
-      const o = groups[g] || (groups[g] = { total: 0, hit: 0, pctSum: 0 });
-      o.total++; if(r.hit === true) o.hit++; o.pctSum += Number(r.model_pct);
-    });
-    const allCounts = {};
-    rows.forEach(r => { const g = betGroup(r.market_key); allCounts[g] = (allCounts[g] || 0) + 1; });
-    const typeBody = document.getElementById('recTypeBody');
-    const names = Object.keys(allCounts).sort((a,b) => a.localeCompare(b, 'tr'));
-    if(names.length > 0){
-      typeBody.innerHTML = '';
-      names.forEach(g => {
-        const o = groups[g];
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${g}</td>
-          <td style="font-variant-numeric: tabular-nums;">${allCounts[g]}</td>
-          <td style="font-variant-numeric: tabular-nums;">${o ? o.total : 0}</td>
-          <td style="font-variant-numeric: tabular-nums;">${o ? o.hit : 0}</td>
-          <td style="color:var(--accent); font-weight:600; font-variant-numeric: tabular-nums;">${o ? Math.round(o.hit/o.total*100) + '%' : '—'}</td>
-          <td style="font-variant-numeric: tabular-nums;">${o ? (o.pctSum/o.total*100).toFixed(0) + '%' : '—'}</td>`;
-        typeBody.appendChild(tr);
-      });
-    }
-
-    recStatusEl.textContent = `${rows.length} öneri yüklendi.`;
+    REC_ALL = (data || []).map(r => ({
+      ...r,
+      _batch: r.batch_id || OLD_BATCH,
+      _page: r.batch_page || 'Önerilen Bahisler',
+      _league: r.competition_name || '—',
+    }));
+    buildRecFilters();
+    renderRecommendations();
   }catch(err){
     console.error(err);
     recStatusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
   }
 }
+
+function fillSelect(id, firstLabel, entries){
+  const sel = document.getElementById(id);
+  const keep = sel.value;
+  sel.innerHTML = '';
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = firstLabel; sel.appendChild(o0);
+  entries.forEach(([value, label]) => {
+    const o = document.createElement('option'); o.value = value; o.textContent = label; sel.appendChild(o);
+  });
+  if([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+function buildRecFilters(){
+  // Kayıtlar (her "Doğrulamaya Kaydet" tıklaması)
+  const batches = new Map();
+  REC_ALL.forEach(r => {
+    const b = batches.get(r._batch) || { id: r._batch, n: 0, created: r.created_at || '', page: r._page,
+      start: r.batch_start, end: r.batch_end, league: r.batch_league, option: r.batch_option };
+    b.n++;
+    if(r.created_at && (!b.created || r.created_at < b.created)) b.created = r.created_at;
+    batches.set(r._batch, b);
+  });
+  const batchList = [...batches.values()].sort((a,b) => String(b.created).localeCompare(String(a.created)));
+  fillSelect('fBatch', 'Tüm kayıtlar', batchList.map(b => {
+    if(b.id === OLD_BATCH) return [b.id, `Eski kayıtlar, kayıt bilgisi yok (${b.n} bahis)`];
+    const range = (b.start && b.end) ? `${dmShort(b.start)}-${dmShort(b.end)}` : '';
+    const label = [b.created ? dtShort(b.created) : '', b.page, range, b.league, b.option].filter(Boolean).join(' | ');
+    return [b.id, `${label} (${b.n} bahis)`];
+  }));
+
+  const uniq = fn => [...new Set(REC_ALL.map(fn))].filter(Boolean).sort((a,b) => a.localeCompare(b, 'tr'));
+  fillSelect('fPage', 'Tüm sayfalar', uniq(r => r._page).map(v => [v, v]));
+  fillSelect('fOption', 'Tüm seçenekler', uniq(r => r.market_label).map(v => [v, v]));
+  fillSelect('fLeague', 'Tüm ligler', uniq(r => r._league).map(v => [v, v]));
+}
+
+function currentRecRows(){
+  const f = {
+    batch: document.getElementById('fBatch').value,
+    page: document.getElementById('fPage').value,
+    option: document.getElementById('fOption').value,
+    league: document.getElementById('fLeague').value,
+    start: document.getElementById('fStart').value,
+    end: document.getElementById('fEnd').value,
+  };
+  let rows = REC_ALL.filter(r =>
+    (!f.batch || r._batch === f.batch) &&
+    (!f.page || r._page === f.page) &&
+    (!f.option || r.market_label === f.option) &&
+    (!f.league || r._league === f.league) &&
+    (!f.start || (r.utc_date && localDay(r.utc_date) >= f.start)) &&
+    (!f.end || (r.utc_date && localDay(r.utc_date) <= f.end)));
+  // Kayıt seçilmediyse aynı maç + aynı bahis birden fazla kayıtta olsa bile bir kez say
+  if(!f.batch){
+    const seen = new Set();
+    rows = rows.filter(r => { const k = r.match_id + '|' + r.market_key; if(seen.has(k)) return false; seen.add(k); return true; });
+  }
+  return rows;
+}
+
+function renderRecommendations(){
+  const recStatusEl = document.getElementById('recStatusText');
+  const rows = currentRecRows();
+  const scored = rows.filter(r => r.status === 'FINISHED' && r.hit !== null && r.hit !== undefined);
+  const hits = scored.filter(r => r.hit === true);
+
+  document.getElementById('recStatTotal').textContent = rows.length;
+  document.getElementById('recStatScored').textContent = scored.length;
+  document.getElementById('recStatHitRate').textContent = scored.length > 0 ? `${(hits.length/scored.length*100).toFixed(0)}%` : '—';
+
+  const body = document.getElementById('recResultsBody');
+  body.innerHTML = '';
+  if(rows.length === 0){
+    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted2);">Seçtiğin filtrelere uyan kayıtlı bahis yok.</td></tr>';
+  }
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const live = r.utc_date ? liveMatchInfo(r.utc_date, r.status) : { live:false };
+    let resultCell;
+    if(r.status === 'FINISHED' && (r.hit === null || r.hit === undefined)){
+      resultCell = `<span class="pill pending" title="Maç bitti ama sonuç hesaplanamadı (örneğin ilk yarı skoru yok)">Belirsiz</span>`;
+    } else if(r.status === 'FINISHED'){
+      const cls = r.hit ? 'ok' : 'bad';
+      const label = r.hit ? 'Gerçekleşti' : 'Gerçekleşmedi';
+      resultCell = `<span class="pill ${cls}">${label}</span>`;
+    } else if(live.live){
+      resultCell = `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`;
+    } else {
+      resultCell = `<span class="pill pending">Bekliyor</span>`;
+    }
+
+    // İlk yarı seçenekleri için ilk yarı skorunu, diğerleri için maç sonu skorunu göster
+    let scoreCell = '—';
+    const isHT = r.market_key && r.market_key.startsWith('ht');
+    const isHTFT = r.market_key && r.market_key.startsWith('htft_');
+    if(isHTFT){
+      const ht = (r.home_ht_score != null && r.away_ht_score != null) ? `${r.home_ht_score} – ${r.away_ht_score}` : '?';
+      const ft = (r.home_score != null && r.away_score != null) ? `${r.home_score} – ${r.away_score}` : '?';
+      if(r.status === 'FINISHED' || live.live) scoreCell = `İY ${ht}, MS ${ft}`;
+    } else if(isHT && r.home_ht_score != null && r.away_ht_score != null){
+      scoreCell = `${r.home_ht_score} – ${r.away_ht_score} (İY)`;
+    } else if(!isHT && !isHTFT && r.home_score != null && r.away_score != null){
+      scoreCell = `${r.home_score} – ${r.away_score}`;
+    } else if(live.live){
+      scoreCell = `${r.home_score ?? '?'} – ${r.away_score ?? '?'}`;
+    }
+
+    tr.innerHTML = `
+      <td>${r.utc_date ? new Date(r.utc_date).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—'}</td>
+      <td>${r.home_team_name} - ${r.away_team_name}</td>
+      <td>${r.market_label}</td>
+      <td style="color:var(--accent); font-weight:600;">${(r.model_pct*100).toFixed(1)}%</td>
+      <td style="font-variant-numeric: tabular-nums;">${scoreCell}</td>
+      <td>${resultCell}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  // Bahis türüne göre özet (filtreye göre)
+  const groups = {};
+  scored.forEach(r => {
+    const g = betGroup(r.market_key);
+    const o = groups[g] || (groups[g] = { total: 0, hit: 0, pctSum: 0 });
+    o.total++; if(r.hit === true) o.hit++; o.pctSum += Number(r.model_pct);
+  });
+  const allCounts = {};
+  rows.forEach(r => { const g = betGroup(r.market_key); allCounts[g] = (allCounts[g] || 0) + 1; });
+  const typeBody = document.getElementById('recTypeBody');
+  const names = Object.keys(allCounts).sort((a,b) => a.localeCompare(b, 'tr'));
+  typeBody.innerHTML = '';
+  if(names.length === 0){
+    typeBody.innerHTML = '<tr><td colspan="6" style="color:var(--muted2);">Bu filtrelerde kayıtlı bahis yok.</td></tr>';
+  }
+  names.forEach(g => {
+    const o = groups[g];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${g}</td>
+      <td style="font-variant-numeric: tabular-nums;">${allCounts[g]}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o ? o.total : 0}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o ? o.hit : 0}</td>
+      <td style="color:var(--accent); font-weight:600; font-variant-numeric: tabular-nums;">${o ? Math.round(o.hit/o.total*100) + '%' : '—'}</td>
+      <td style="font-variant-numeric: tabular-nums;">${o ? (o.pctSum/o.total*100).toFixed(0) + '%' : '—'}</td>`;
+    typeBody.appendChild(tr);
+  });
+
+  recStatusEl.textContent = `${rows.length} bahis gösteriliyor (toplam ${REC_ALL.length} kayıtlı satır).`;
+}
+
+['fBatch','fPage','fOption','fLeague','fStart','fEnd'].forEach(id =>
+  document.getElementById(id).addEventListener('change', renderRecommendations));
+document.getElementById('fReset').addEventListener('click', () => {
+  ['fBatch','fPage','fOption','fLeague','fStart','fEnd'].forEach(id => { document.getElementById(id).value = ''; });
+  renderRecommendations();
+});
+
 load();
 loadRecommendations();
 </script>
