@@ -139,6 +139,7 @@ let FINISHED_MATCHES = [];   // fatigue hesap için (tarih)
 let FINISHED_FOR_BASELINE = []; // baseline istatistik için (skorlar)
 let BASELINE = {}; // competition_id -> { marketKey: pct }
 let LAST_RECOMMENDATIONS = [];
+let LAST_CTX = null;   // kaydın hangi tarih aralığı, lig ve seçeneklerle yapıldığı
 
 const today = new Date();
 const in7days = new Date(Date.now() + 7*24*60*60*1000);
@@ -472,6 +473,11 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     : filtered;
   const top = limit > 0 ? spread.slice(0, limit) : spread;
   LAST_RECOMMENDATIONS = top;
+  const selTxt = id => { const e = document.getElementById(id); return (e && e.selectedIndex >= 0) ? e.options[e.selectedIndex].textContent : ''; };
+  LAST_CTX = {
+    page: 'Önerilen Bahisler', start: startVal, end: endVal, league: leagueName || 'Tüm ligler',
+    option: ['olasılık: ' + selTxt('rangeSelect'), selTxt('sortSelect'), selTxt('limitSelect'), 'maç başına: ' + selTxt('perMatchSelect')].join(', '),
+  };
 
   const body = document.getElementById('recBody');
   body.innerHTML = '';
@@ -516,9 +522,12 @@ document.getElementById('runBtn').addEventListener('click', async () => {
 
 document.getElementById('saveRecBtn').addEventListener('click', async () => {
   const saveStatus = document.getElementById('saveRecStatus');
-  if(!LAST_RECOMMENDATIONS || LAST_RECOMMENDATIONS.length === 0) return;
+  const btn = document.getElementById('saveRecBtn');
+  if(!LAST_RECOMMENDATIONS || LAST_RECOMMENDATIONS.length === 0 || !LAST_CTX) return;
+  btn.disabled = true;                       // aynı listeyi iki kez kaydetmeyi önler
   saveStatus.textContent = 'Kaydediliyor…';
   try{
+    const batchId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2));
     const rows = LAST_RECOMMENDATIONS.map(c => ({
       match_id: c.matchId,
       market_key: c.marketKey,
@@ -526,12 +535,19 @@ document.getElementById('saveRecBtn').addEventListener('click', async () => {
       model_pct: c.modelPct,
       base_pct: c.basePct,
       source: c.source,
+      batch_id: batchId,
+      batch_page: LAST_CTX.page,
+      batch_start: LAST_CTX.start,
+      batch_end: LAST_CTX.end,
+      batch_league: LAST_CTX.league,
+      batch_option: LAST_CTX.option,
     }));
-    const { error } = await sb.from('market_recommendations').upsert(rows, { onConflict: 'match_id,market_key' });
+    const { error } = await sb.from('market_recommendations').upsert(rows, { onConflict: 'match_id,market_key,batch_id' });
     if(error) throw error;
-    saveStatus.textContent = `${rows.length} öneri kaydedildi — Doğrulama Paneli'nde takip edebilirsin.`;
+    saveStatus.textContent = `${rows.length} öneri kaydedildi. Sonuçlarını Doğrulama Paneli'nde sayfa, tarih ve seçeneğe göre süzerek takip edebilirsin.`;
   }catch(err){
     console.error(err);
+    btn.disabled = false;
     saveStatus.textContent = 'Hata: ' + (err.message || err);
   }
 });
