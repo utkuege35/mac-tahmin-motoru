@@ -76,6 +76,10 @@ body{
 }
 .sidebar nav details.nav-group[open] > summary::after{ transform: rotate(45deg); }
 .sidebar nav details.nav-group > summary:hover::after{ border-color: var(--ink); }
+.sidebar nav details.nav-group > summary > .nav-title{
+  flex: 1; color: var(--muted); font-size: 0.88rem; font-weight: 500; padding: 9px 10px; border-radius: 6px;
+}
+.sidebar nav details.nav-group > summary:hover > .nav-title{ background: var(--panel-hover); color: var(--ink); }
 .sidebar nav .nav-sub{
   display:flex; flex-direction:column; gap:1px;
   margin: 2px 0 6px 16px; padding-left: 8px; border-left: 1px solid var(--line-strong);
