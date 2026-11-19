@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alt / Üst — Maç Tahmin Motoru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .num{ font-variant-numeric: tabular-nums; }
+  .pick{ color: var(--accent); font-weight: 700; }
+  .dim{ color: var(--muted2); }
+  td.sep, th.sep{ border-left: 1px solid var(--line-strong); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <details class="nav-group" open>
+      <summary><a href="dogrulama.html">Doğrulama Paneli</a></summary>
+      <div class="nav-sub">
+        <a href="dogrulama.html#tahmin" data-tab="tahmin">Tahmin Sonuçları</a>
+        <a href="dogrulama.html#bahis" data-tab="bahis">Bahis Sonuçları</a>
+        <a href="dogrulama.html#secenek" data-tab="secenek">Seçeneklere Göre Oranlar</a>
+        <a href="dogrulama.html#bekleyen" data-tab="bekleyen">Oynanmamış Maçlar</a>
+      </div>
+    </details>
+    <a href="istatistikler.html">İstatistikler</a>
+    <a href="oneriler.html">Önerilen Bahisler</a>
+    <a href="macsonucu.html">Maç Sonucu</a>
+    <a href="kg.html">Karşılıklı Gol</a>
+    <a href="altust.html" class="active">Alt / Üst</a>
+    <a href="iyms.html">İlk Yarı / Maç Sonu</a>
+    <a href="iyberaberlik.html">İlk Yarı Beraberlik</a>
+    <a href="handikap.html">Handikap</a>
+    <a href="yenile.html">Verileri Güncelle</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Tarih aralığındaki maçların skor olasılıkları hesaplanır</li>
+      <li>Toplam gol dağılımından seçtiğin çizginin (1.5 / 2.5 / 3.5) üstü ve altı olasılığı çıkar</li>
+      <li>Adil oran, olası Bilyoner oranı ve ligin gerçek üst oranı yanında gösterilir</li>
+    </ol>
+  </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Alt / Üst</h1>
+  <p class="page-sub">Maç sonu toplam gol için Üst ve Alt bahsinde en olası maçlar</p>
+  <div class="status-line" id="statusText">Yükleniyor…</div>
+
+  <div class="panel controls" style="margin-bottom:20px;">
+    <div>
+      <label for="startDate">Başlangıç</label>
+      <input type="date" id="startDate">
+    </div>
+    <div>
+      <label for="endDate">Bitiş</label>
+      <input type="date" id="endDate">
+    </div>
+    <div>
+      <label for="leagueSelect">Lig</label>
+      <select id="leagueSelect"><option value="">Tüm ligler</option></select>
+    </div>
+    <div>
+      <label for="lineSelect">Gol çizgisi</label>
+      <select id="lineSelect">
+        <option value="1.5">1.5</option>
+        <option value="2.5" selected>2.5</option>
+        <option value="3.5">3.5</option>
+      </select>
+    </div>
+    <div>
+      <label for="sortSelect">Göster</label>
+      <select id="sortSelect">
+        <option value="over" selected>Üst en olası maçlar</option>
+        <option value="under">Alt en olası maçlar</option>
+        <option value="best">En olası olan (Üst ya da Alt)</option>
+        <option value="date">Tarihe göre</option>
+      </select>
+    </div>
+    <div>
+      <label for="minSelect">En az olasılık</label>
+      <select id="minSelect">
+        <option value="0.50">%50 ve üzeri</option>
+        <option value="0.55" selected>%55 ve üzeri</option>
+        <option value="0.60">%60 ve üzeri</option>
+        <option value="0">Hepsi</option>
+      </select>
+    </div>
+    <div>
+      <button id="runBtn" disabled>Bülteni Getir</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="datatable" id="resultTable">
+      <thead id="resultHead"></thead>
+      <tbody id="resultBody"><tr><td style="color:var(--muted2);">Tarih aralığı seçip "Bülteni Getir"e bas.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <button class="secondary" id="saveBtn" disabled>İlk 25'i Doğrulamaya Kaydet</button>
+    <span id="saveStatus" style="font-size:0.74rem; color: var(--muted2);"></span>
+  </div>
+
+  <div class="note">
+    <strong>Üst:</strong> maçtaki toplam gol çizgiden fazla olur (2.5 Üst = en az 3 gol). <strong>Alt:</strong> toplam gol çizgiden az olur (2.5 Alt = en çok 2 gol). İkisinin olasılığı toplamı %100'dür.<br>
+    <strong>Beklenen gol:</strong> modelin ev sahibi ve deplasman için beklediği gol.<br>
+    <strong>Adil oran:</strong> 1 ÷ olasılık.<br>
+    <strong>Olası Bilyoner oranı:</strong> adil oran ÷ 1.18. Maç sonu 2.5 alt/üstte ölçtüğüm yaklaşık %18 marjı kullandım. 1.5 ve 3.5 için marjı ölçmedim, aynı değeri varsaydım, o yüzden bu iki çizgide oran daha belirsizdir.<br>
+    <strong>Lig ort.:</strong> o ligde bu sezon oynanan maçların kaçında toplam gol seçtiğin çizgiyi aşmış (parantez içinde maç sayısı). Alt oranı bunun tamamlayıcısıdır. Modelin verdiği olasılıkla yan yana bak, büyük fark varsa lig ortalamasına daha çok güven.<br><br>
+    Az maçlık veriyle tahminler daha oynaktır. Bu bir garanti değil, istatistiksel bir referanstır. Bahis kararlarını yalnızca bu modele dayandırma.
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const OU_OVERROUND = 1.18;         // maç sonu 2.5 alt/üstte ölçülen marj, 1.5 ve 3.5 için de varsayıldı
+const MAX_ODDS = 35;
+const MIN_BASELINE_N = 15;         // lig ortalaması için en az maç sayısı
+const RHO = -0.10;                 // Dixon-Coles düşük skor düzeltmesi (diğer sayfalarla aynı)
+const MAXG = 8;
+
+const statusEl = document.getElementById('statusText');
+let RATINGS = {};
+let RECENT_FINISHED = [];
+let BASELINE = {};                 // competition_id -> { n, g: toplam gol dağılımı (0..) }
+
+document.getElementById('startDate').value = new Date().toISOString().slice(0,10);
+document.getElementById('endDate').value = new Date(Date.now() + 5*24*60*60*1000).toISOString().slice(0,10);
+
+// Supabase tek sorguda en fazla 1000 satır döndürür, sayfa sayfa çekiyoruz
+async function fetchAllRows(makeQuery){
+  const PAGE = 1000;
+  const all = [];
+  let from = 0;
+  while(true){
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+    if(error) throw error;
+    all.push(...(data || []));
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
+async function init(){
+  statusEl.textContent = 'Veriler yükleniyor…';
+  try{
+    const since = new Date(Date.now() - 14*24*60*60*1000).toISOString();
+    const [{ data: ratingRows, error: e1 }, { data: recentRows, error: e2 }, scoreRows] = await Promise.all([
+      sb.from('team_ratings_full').select('*'),
+      sb.from('matches').select('home_team_id, away_team_id, utc_date').eq('status','FINISHED').gte('utc_date', since),
+      fetchAllRows(() => sb.from('matches')
+        .select('id, competition_id, home_score, away_score')
+        .eq('status','FINISHED')
+        .not('home_score','is',null)
+        .not('away_score','is',null)
+        .order('id', { ascending: true })),
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+
+    (ratingRows||[]).forEach(r => { RATINGS[r.team_id + '::' + r.competition_id] = r; });
+    RECENT_FINISHED = recentRows || [];
+
+    // Lig bazında toplam gol dağılımı
+    scoreRows.forEach(m => {
+      const b = BASELINE[m.competition_id] || (BASELINE[m.competition_id] = { n: 0, g: [] });
+      b.n++;
+      const t = m.home_score + m.away_score;
+      b.g[t] = (b.g[t] || 0) + 1;
+    });
+
+    const leagues = new Map();
+    (ratingRows||[]).forEach(r => leagues.set(String(r.competition_id), r.competition_name));
+    const leagueSel = document.getElementById('leagueSelect');
+    [...leagues.entries()].sort((a,b) => a[1].localeCompare(b[1], 'tr')).forEach(([id, name]) => {
+      const o = document.createElement('option');
+      o.value = id; o.textContent = name;
+      leagueSel.appendChild(o);
+    });
+
+    statusEl.textContent = `Hazır, ${Object.keys(RATINGS).length} takımın katsayıları, ${scoreRows.length} maçın skoru yüklü.`;
+    document.getElementById('runBtn').disabled = false;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
+  }
+}
+
+// ---- Yorgunluk (diğer sayfalarla aynı kural) ----
+function findLastMatchDate(teamId, beforeDate){
+  let best = null;
+  RECENT_FINISHED.forEach(m => {
+    if(m.home_team_id !== teamId && m.away_team_id !== teamId) return;
+    const d = new Date(m.utc_date);
+    if(d < beforeDate && (best === null || d > best)) best = d;
+  });
+  return best;
+}
+function fatigueAdjust(restDays){
+  if(restDays == null) return { attackMult: 1, defenseMult: 1 };
+  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08 };
+  if(restDays <= 5) return { attackMult: 0.96, defenseMult: 1.04 };
+  return { attackMult: 1, defenseMult: 1 };
+}
+
+// ---- Canlı maç göstergesi (tahmini) ----
+function liveMatchInfo(utcDateStr, status){
+  if(status === 'FINISHED') return { label: 'Bitti', live:false };
+  const kickoff = new Date(utcDateStr);
+  const now = new Date();
+  if(kickoff > now) return { label: null, live:false };
+  if(status === 'POSTPONED' || status === 'CANCELLED' || status === 'SUSPENDED') return { label: 'İptal/Ertelendi', live:false };
+  const elapsedMin = Math.floor((now-kickoff)/60000);
+  if(status === 'PAUSED' || (elapsedMin > 45 && elapsedMin <= 60)) return { label: 'Devre Arası', live:true };
+  if(elapsedMin <= 45) return { label: `Canlı ~${elapsedMin}' (tahmini)`, live:true };
+  if(elapsedMin <= 110) return { label: `Canlı ~${elapsedMin-15}' (tahmini)`, live:true };
+  return { label: 'Muhtemelen bitti (veri güncel değil)', live:true };
+}
+
+// ---- Poisson + Dixon-Coles ----
+function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
+function factorial(n){ let r=1; for(let i=2;i<=n;i++) r*=i; return r; }
+function tau(x, y, lh, la){
+  if(x===0 && y===0) return 1 - (lh*la*RHO);
+  if(x===0 && y===1) return 1 + (lh*RHO);
+  if(x===1 && y===0) return 1 + (la*RHO);
+  if(x===1 && y===1) return 1 - RHO;
+  return 1;
+}
+
+// Üst olasılığı: toplam gol > çizgi (çizgi 1.5 / 2.5 / 3.5)
+function computeOver(hR, aR, hf, af, line){
+  const attH = Number(hR.attack) * hf.attackMult, defH = Number(hR.defense) * hf.defenseMult;
+  const attA = Number(aR.attack) * af.attackMult, defA = Number(aR.defense) * af.defenseMult;
+  const homeAdv = Number(hR.home_adv) || 1.3;
+  const lamH = Math.max(0.05, attH * defA * homeAdv);
+  const lamA = Math.max(0.05, attA * defH);
+
+  let over = 0, total = 0;
+  for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++){
+    let p = poissonPmf(x, lamH) * poissonPmf(y, lamA) * tau(x, y, lamH, lamA);
+    if(p < 0) p = 0;
+    total += p;
+    if(x + y > line) over += p;
+  }
+  const pOver = over / total;
+  return { lamH, lamA, pOver, pUnder: 1 - pOver };
+}
+
+// Ligde toplam golün çizgiyi aştığı maç oranı
+function baseOver(compId, line){
+  const b = BASELINE[compId];
+  if(!b || b.n < MIN_BASELINE_N) return null;
+  let c = 0;
+  b.g.forEach((cnt, t) => { if(cnt && t > line) c += cnt; });
+  return c / b.n;
+}
+
+const fmtPct = v => (v*100).toFixed(1) + '%';
+const fairOdds = p => p > 0 ? 1/p : Infinity;
+const likelyOdds = p => p > 0 ? Math.min(MAX_ODDS, Math.max(1.01, (1/p) / OU_OVERROUND)) : MAX_ODDS;
+
+function statusCell(live){
+  return live.live
+    ? `<span class="pill bad" style="background:rgba(193,88,79,0.16); color:var(--red);">${live.label}</span>`
+    : `<span class="dim" style="font-size:0.72rem;">Planlandı</span>`;
+}
+
+function baselineCell(compId, line){
+  const v = baseOver(compId, line);
+  if(v == null) return `<td class="num sep dim">—</td>`;
+  return `<td class="num sep dim">Üst ${fmtPct(v)} (${BASELINE[compId].n})</td>`;
+}
+
+document.getElementById('runBtn').addEventListener('click', async () => {
+  const startVal = document.getElementById('startDate').value;
+  const endVal = document.getElementById('endDate').value;
+  if(!startVal || !endVal) return;
+  const leagueSelEl = document.getElementById('leagueSelect');
+  const leagueVal = leagueSelEl.value;
+  const leagueName = leagueVal ? leagueSelEl.options[leagueSelEl.selectedIndex].textContent : '';
+  const mode = document.getElementById('sortSelect').value;
+  const minP = Number(document.getElementById('minSelect').value);
+  const line = Number(document.getElementById('lineSelect').value);
+
+  statusEl.textContent = 'Maçlar hesaplanıyor…';
+  setSaveRows([]);
+  let fixQuery = sb.from('matches')
+    .select('id, competition_id, home_team_id, away_team_id, utc_date, status')
+    .in('status', ['SCHEDULED','TIMED','IN_PLAY','PAUSED'])
+    .gte('utc_date', startVal + 'T00:00:00Z')
+    .lte('utc_date', endVal + 'T23:59:59Z');
+  if(leagueVal) fixQuery = fixQuery.eq('competition_id', Number(leagueVal));
+  const { data: fixtures, error } = await fixQuery.order('utc_date', { ascending: true }).limit(300);
+  if(error){ statusEl.textContent = 'Hata: ' + error.message; return; }
+
+  const items = [];
+  (fixtures||[]).forEach(f => {
+    const hR = RATINGS[f.home_team_id + '::' + f.competition_id];
+    const aR = RATINGS[f.away_team_id + '::' + f.competition_id];
+    if(!hR || !aR) return;
+    const matchDate = new Date(f.utc_date);
+    const homeRest = findLastMatchDate(f.home_team_id, matchDate);
+    const awayRest = findLastMatchDate(f.away_team_id, matchDate);
+    const hf = fatigueAdjust(homeRest ? Math.round((matchDate-homeRest)/86400000) : null);
+    const af = fatigueAdjust(awayRest ? Math.round((matchDate-awayRest)/86400000) : null);
+    const r = computeOver(hR, aR, hf, af, line);
+    items.push({
+      f, matchDate, r,
+      match: `${hR.team_name} - ${aR.team_name}`,
+      dateStr: matchDate.toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit' }) + ' ' + matchDate.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' }),
+      live: liveMatchInfo(f.utc_date, f.status),
+    });
+  });
+
+  // Seçilen görünüme göre ölçüt: Üst, Alt ya da ikisinden yüksek olan
+  const key = it => mode === 'over' ? it.r.pOver : (mode === 'under' ? it.r.pUnder : Math.max(it.r.pOver, it.r.pUnder));
+  const shown = items.filter(it => key(it) >= minP);
+  shown.sort((a,b) => mode === 'date' ? a.matchDate - b.matchDate : key(b) - key(a));
+
+  const head = document.getElementById('resultHead');
+  const body = document.getElementById('resultBody');
+  body.innerHTML = '';
+
+  if(shown.length === 0){
+    head.innerHTML = '';
+    let msg;
+    if(items.length === 0){
+      msg = leagueVal ? `${leagueName} için bu tarih aralığında fikstür verisi yok.` : 'Bu tarih aralığında fikstür verisi yok.';
+      if(/s[uü]per lig/i.test(leagueName)) msg += ' Süper Lig için yaklaşan fikstür kaynağımız yok, maçları Tek Maç sayfasından elle hesaplayabilirsin.';
+    } else {
+      msg = `${items.length} maç var ama hiçbirinde seçtiğin olasılık alt sınırının üzerinde değil. "En az olasılık"ı düşürmeyi dene.`;
+    }
+    body.innerHTML = `<tr><td style="color:var(--muted2);">${msg}</td></tr>`;
+    statusEl.textContent = `${items.length} maç tarandı, 0 tanesi listelendi.`;
+    return;
+  }
+
+  head.innerHTML = `<tr><th>Tarih</th><th>Durum</th><th>Maç</th><th class="num">Beklenen gol</th>` +
+    `<th class="num sep">Üst ${line}</th><th class="num">Adil oran</th><th class="num">Olası oran</th>` +
+    `<th class="num sep">Alt ${line}</th><th class="num">Adil oran</th><th class="num">Olası oran</th>` +
+    `<th class="num sep">Lig ort.</th></tr>`;
+  shown.forEach(it => {
+    const yesBetter = it.r.pOver >= it.r.pUnder;
+    const c1 = yesBetter ? 'pick' : '', c2 = yesBetter ? '' : 'pick';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${it.dateStr}</td>
+      <td>${statusCell(it.live)}</td>
+      <td>${it.match}</td>
+      <td class="num dim">${it.r.lamH.toFixed(2)} - ${it.r.lamA.toFixed(2)}</td>
+      <td class="num sep ${c1}">${fmtPct(it.r.pOver)}</td>
+      <td class="num ${c1}">${fairOdds(it.r.pOver).toFixed(2)}</td>
+      <td class="num ${c1}">${likelyOdds(it.r.pOver).toFixed(2)}</td>
+      <td class="num sep ${c2}">${fmtPct(it.r.pUnder)}</td>
+      <td class="num ${c2}">${fairOdds(it.r.pUnder).toFixed(2)}</td>
+      <td class="num ${c2}">${likelyOdds(it.r.pUnder).toFixed(2)}</td>
+      ${baselineCell(it.f.competition_id, line)}`;
+    body.appendChild(tr);
+  });
+  setSaveRows(buildSaveRows(shown, mode, line), makeCtx('Alt / Üst', startVal, endVal, leagueName, ['çizgi: ' + line, selText('sortSelect'), 'en az olasılık: ' + selText('minSelect')]));
+  statusEl.textContent = `${items.length} maç tarandı, ${shown.length} tanesi listelendi.`;
+});
+
+// Üst ya da Alt: "Göster" seçimine göre, "en olası"da maç başına yüksek olan
+function buildSaveRows(list, mode, line){
+  const code = String(line).replace('.', '');          // 2.5 -> 25
+  return list.filter(it => !it.live.live).map(it => {
+    const over = mode === 'over' ? true : (mode === 'under' ? false : it.r.pOver >= it.r.pUnder);
+    const bo = baseOver(it.f.competition_id, line);
+    return {
+      match_id: it.f.id,
+      market_key: (over ? 'over' : 'under') + code,
+      market_label: (over ? 'Üst ' : 'Alt ') + line,
+      model_pct: over ? it.r.pOver : it.r.pUnder,
+      base_pct: bo == null ? null : (over ? bo : 1 - bo),
+      source: 'Alt / Üst',
+    };
+  }).sort((a,b) => b.model_pct - a.model_pct);
+}
+
+// ---- Doğrulama için kaydet: listenin en olası ilk 25 bahsi ----
+const SAVE_LIMIT = 25;
+let SAVE_ROWS = [];
+let SAVE_CTX = null;   // kaydın hangi sayfa, tarih aralığı, lig ve seçeneklerle yapıldığı
+const selText = id => { const e = document.getElementById(id); return (e && e.selectedIndex >= 0) ? e.options[e.selectedIndex].textContent : ''; };
+function makeCtx(page, start, end, leagueName, optionParts){
+  return { page, start, end, league: leagueName || 'Tüm ligler', option: optionParts.filter(Boolean).join(', ') };
+}
+function setSaveRows(rows, ctx){
+  SAVE_ROWS = rows.slice(0, SAVE_LIMIT);
+  SAVE_CTX = ctx || null;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = SAVE_ROWS.length === 0;
+  btn.textContent = SAVE_ROWS.length === 0 ? "İlk 25'i Doğrulamaya Kaydet"
+    : (SAVE_ROWS.length < SAVE_LIMIT ? `${SAVE_ROWS.length} bahsi Doğrulamaya Kaydet` : "İlk 25'i Doğrulamaya Kaydet");
+  document.getElementById('saveStatus').textContent = '';
+}
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const st = document.getElementById('saveStatus');
+  const btn = document.getElementById('saveBtn');
+  if(SAVE_ROWS.length === 0 || !SAVE_CTX) return;
+  btn.disabled = true;                       // aynı listeyi iki kez kaydetmeyi önler
+  st.textContent = 'Kaydediliyor…';
+  try{
+    const batchId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2));
+    const rows = SAVE_ROWS.map(r => ({ ...r, batch_id: batchId, batch_page: SAVE_CTX.page,
+      batch_start: SAVE_CTX.start, batch_end: SAVE_CTX.end, batch_league: SAVE_CTX.league, batch_option: SAVE_CTX.option }));
+    const { error } = await sb.from('market_recommendations').upsert(rows, { onConflict: 'match_id,market_key,batch_id' });
+    if(error) throw error;
+    st.textContent = `${rows.length} bahis kaydedildi. Sonuçlarını Doğrulama Paneli'nde sayfa, tarih ve seçeneğe göre süzerek takip edebilirsin.`;
+  }catch(err){
+    console.error(err);
+    btn.disabled = false;
+    st.textContent = 'Hata: ' + (err.message || err);
+  }
+});
+
+init();
+</script>
+</body>
+</html>
