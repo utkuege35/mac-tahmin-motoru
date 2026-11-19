@@ -40,6 +40,7 @@
     <a href="iyms.html">İlk Yarı / Maç Sonu</a>
     <a href="iyberaberlik.html">İlk Yarı Beraberlik</a>
     <a href="handikap.html">Handikap</a>
+    <a href="haftalik.html">Haftalık Kayıt</a>
     <a href="yenile.html">Verileri Güncelle</a>
   </nav>
   <div class="guide">
@@ -136,7 +137,7 @@
     </div>
 
     <div class="note">
-      Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, Alt / Üst, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" butonuna bastığında kaydettiğin bahislerin bitmiş maçlardaki sonucu. En yeni maç en üstte, henüz oynanmamış maçlar menüdeki "Oynanmamış Maçlar" bölümünde.<br>
+      Önerilen Bahisler sayfasında "Bu Önerileri Kaydet" ya da Maç Sonucu, Karşılıklı Gol, Alt / Üst, İlk Yarı / Maç Sonu, İlk Yarı Beraberlik ve Handikap sayfalarında "Doğrulamaya Kaydet" ya da Haftalık Kayıt sayfasında "Hepsini Doğrulamaya Kaydet" butonuna bastığında kaydettiğin bahislerin bitmiş maçlardaki sonucu. En yeni maç en üstte, henüz oynanmamış maçlar menüdeki "Oynanmamış Maçlar" bölümünde.<br>
       <strong>Filtreler:</strong> "Kayıt", "Doğrulamaya Kaydet" butonuna her bastığında oluşan tek bir kaydı temsil eder (sayfa, kaydettiğin tarih aralığı, lig ve seçtiğin ayarlar yazar). Bir kaydı seçersen sadece o listedeki bahisleri görürsün. Kayıt seçmezsen aynı maç ve aynı bahis birden fazla kayıtta varsa bir kez sayılır. Sayfa, seçenek, lig ve maç tarihi filtreleri birlikte çalışır ve bahis bölümlerinin hepsini etkiler. Filtre bilgisi bu özellikten sonra yapılan kayıtlarda var, eskiler "Eski kayıtlar" altında toplanır.<br>
       <strong>Belirsiz:</strong> maç bitmiş ama sonucu hesaplanamayan bahis (örneğin ilk yarı skoru veride yok).
     </div>
@@ -323,8 +324,16 @@ let REC_PENDING_N = 0;   // filtreye uyan bekleyen bahis sayısı
 async function loadRecommendations(){
   const recStatusEl = document.getElementById('recStatusText');
   try{
-    const { data, error } = await sb.from('market_recommendation_results').select('*').limit(1000);
-    if(error) throw error;
+    // Supabase tek sorguda en fazla 1000 satır verir, hepsini sayfa sayfa çekiyoruz
+    const data = [];
+    for(let from = 0; ; from += 1000){
+      const { data: page, error } = await sb.from('market_recommendation_results').select('*')
+        .order('id', { ascending: true }).range(from, from + 999);
+      if(error) throw error;
+      data.push(...(page || []));
+      if(!page || page.length < 1000) break;
+    }
+    data.sort((a, b) => (new Date(b.utc_date) - new Date(a.utc_date)) || (new Date(b.created_at) - new Date(a.created_at)));
     REC_ALL = (data || []).map(r => ({
       ...r,
       _batch: r.batch_id || OLD_BATCH,
