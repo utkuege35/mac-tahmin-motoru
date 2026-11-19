@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haftalık Kayıt — Maç Tahmin Motoru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .num{ font-variant-numeric: tabular-nums; }
+  .pick{ color: var(--accent); font-weight: 700; }
+  .dim{ color: var(--muted2); }
+  td.sep, th.sep{ border-left: 1px solid var(--line-strong); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">⚽ Maç Tahmin</div>
+  <nav>
+    <a href="index.html">Tek Maç</a>
+    <a href="kupon.html">Hafta Sonu Kuponu</a>
+    <details class="nav-group" open>
+      <summary><a href="dogrulama.html">Doğrulama Paneli</a></summary>
+      <div class="nav-sub">
+        <a href="dogrulama.html#tahmin" data-tab="tahmin">Tahmin Sonuçları</a>
+        <a href="dogrulama.html#bahis" data-tab="bahis">Bahis Sonuçları</a>
+        <a href="dogrulama.html#secenek" data-tab="secenek">Seçeneklere Göre Oranlar</a>
+        <a href="dogrulama.html#bekleyen" data-tab="bekleyen">Oynanmamış Maçlar</a>
+      </div>
+    </details>
+    <a href="istatistikler.html">İstatistikler</a>
+    <a href="oneriler.html">Önerilen Bahisler</a>
+    <a href="macsonucu.html">Maç Sonucu</a>
+    <a href="kg.html">Karşılıklı Gol</a>
+    <a href="altust.html">Alt / Üst</a>
+    <a href="iyms.html">İlk Yarı / Maç Sonu</a>
+    <a href="iyberaberlik.html">İlk Yarı Beraberlik</a>
+    <a href="handikap.html">Handikap</a>
+    <a href="haftalik.html" class="active">Haftalık Kayıt</a>
+    <a href="yenile.html">Verileri Güncelle</a>
+  </nav>
+  <div class="guide">
+    <h3>Nasıl çalışır</h3>
+    <ol>
+      <li>Tarih aralığını seç, Hesapla'ya bas</li>
+      <li>Her bahis türü için alt sınırı geçen maçlar sayılır</li>
+      <li>Hepsini Doğrulamaya Kaydet ile tek seferde kaydolur</li>
+    </ol>
+  </div>
+  <div class="foot">Kişisel kullanım içindir, yatırım/bahis tavsiyesi değildir.</div>
+</aside>
+
+<main class="main">
+  <h1 class="page-title">Haftalık Kayıt</h1>
+  <p class="page-sub">Tüm bahis türlerinin önerilerini tek seferde Doğrulama Paneli'ne kaydet</p>
+  <div class="status-line" id="statusText">Yükleniyor…</div>
+
+  <div class="panel controls" style="margin-bottom:20px;">
+    <div>
+      <label for="startDate">Başlangıç</label>
+      <input type="date" id="startDate">
+    </div>
+    <div>
+      <label for="endDate">Bitiş</label>
+      <input type="date" id="endDate">
+    </div>
+    <div>
+      <label for="leagueSelect">Lig</label>
+      <select id="leagueSelect"><option value="">Tüm ligler</option></select>
+    </div>
+    <div>
+      <button id="runBtn" disabled>Hesapla</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="datatable" id="resultTable">
+      <thead><tr><th>Bahis türü</th><th class="num">Alt sınır</th><th class="num">Taranan maç</th><th class="num">Kaydolacak</th><th class="num">Zaten kayıtlı</th></tr></thead>
+      <tbody id="resultBody"><tr><td colspan="5" style="color:var(--muted2);">Tarih aralığı seçip "Hesapla"ya bas.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <button class="secondary" id="saveBtn" disabled>Hepsini Doğrulamaya Kaydet</button>
+    <span id="saveStatus" style="font-size:0.74rem; color: var(--muted2);"></span>
+  </div>
+
+  <div class="note">
+    Her bahis türünde modelin seçtiği taraf (örneğin KG Var ya da KG Yok, hangisi daha olasıysa) alt sınırın üzerindeyse kaydolur. Sayı sınırı yoktur, alt sınırı geçen maçların hepsi kaydolur. Alt sınırlar: Maç Sonucu, Karşılıklı Gol ve Alt/Üst için %55, İlk Yarı Beraberlik için %40, İlk Yarı / Maç Sonu için %15, Handikap için %25. Bunlar sayfalardaki varsayılanlardır. İlk Yarı / Maç Sonu ile Handikap'ın olasılıkları doğal olarak düşük olduğu için aynı %55 uygulanmaz.<br>
+    Aynı maç ve aynı bahis türü daha önce Haftalık Kayıt ile kaydedildiyse tekrar kaydedilmez, bu yüzden aynı aralığı iki kez çalıştırman sorun olmaz. Başlamış ya da bitmiş maçlar kaydedilmez.<br>
+    Sonuçları Doğrulama Paneli'nde "Seçeneklere Göre Oranlar" bölümünde bahis türüne göre kayıtlı maç sayısı, gerçekleşen sayısı ve oranıyla görürsün. Sayfa filtresinden "Haftalık Kayıt"ı seçersen sadece bu kayıtlara bakarsın. Önerilen Bahisler sayfasının kaydı ayrıdır, buraya dahil değildir.
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://mhutbjufjwncxxujoqrw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odXRianVmanduY3h4dWpvcXJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3OTQsImV4cCI6MjEwNTIwNTc5NH0.iRjahHYorM3tJSycoA6JifVE2K4H5Pdl_OEYt6FDAKI";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const MIN_BASELINE_N = 15;
+const RHO = -0.10;                 // Dixon-Coles düşük skor düzeltmesi (diğer sayfalarla aynı)
+const MAXG = 8;                    // maç sonu, KG, alt/üst, handikap
+const GMAX_FT = 6;                 // İlk Yarı / Maç Sonu: her yarı için (İY/MS sayfasıyla aynı)
+const GMAX_HT = 10;                // İlk Yarı Beraberlik (o sayfayla aynı)
+const DEFAULT_FH_SHARE = 0.45, SHARE_MIN = 0.38, SHARE_MAX = 0.52;
+const BATCH_PAGE = 'Haftalık Kayıt';
+
+// Bahis türleri ve alt sınırları
+const GROUPS = [
+  { id:'ms',    name:'Maç Sonucu',           min:0.55, page:'Maç Sonucu' },
+  { id:'btts',  name:'Karşılıklı Gol',       min:0.55, page:'Karşılıklı Gol' },
+  { id:'ou15',  name:'Alt / Üst 1.5',        min:0.55, page:'Alt / Üst' },
+  { id:'ou25',  name:'Alt / Üst 2.5',        min:0.55, page:'Alt / Üst' },
+  { id:'ou35',  name:'Alt / Üst 3.5',        min:0.55, page:'Alt / Üst' },
+  { id:'htd',   name:'İlk Yarı Beraberlik',  min:0.40, page:'İlk Yarı Beraberlik' },
+  { id:'htft',  name:'İlk Yarı / Maç Sonu',  min:0.15, page:'İlk Yarı / Maç Sonu' },
+  { id:'hc1',   name:'Handikap -1',          min:0.25, page:'Handikap' },
+  { id:'hc2',   name:'Handikap -2',          min:0.25, page:'Handikap' },
+  { id:'hc3',   name:'Handikap -3',          min:0.25, page:'Handikap' },
+];
+
+const statusEl = document.getElementById('statusText');
+let RATINGS = {};
+let RECENT_FINISHED = [];
+let BASELINE = {};                 // competition_id -> { n, btts, g:[], nh, hd }
+let PENDING_ROWS = [];             // kaydedilecek (yeni) satırlar
+let PENDING_CTX = null;
+
+document.getElementById('startDate').value = new Date().toISOString().slice(0,10);
+document.getElementById('endDate').value = new Date(Date.now() + 5*24*60*60*1000).toISOString().slice(0,10);
+
+async function fetchAllRows(makeQuery){
+  const PAGE = 1000;
+  const all = [];
+  let from = 0;
+  while(true){
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+    if(error) throw error;
+    all.push(...(data || []));
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
+async function init(){
+  statusEl.textContent = 'Veriler yükleniyor…';
+  try{
+    const since = new Date(Date.now() - 14*24*60*60*1000).toISOString();
+    const [{ data: ratingRows, error: e1 }, { data: recentRows, error: e2 }, scoreRows] = await Promise.all([
+      sb.from('team_ratings_full').select('*'),
+      sb.from('matches').select('home_team_id, away_team_id, utc_date').eq('status','FINISHED').gte('utc_date', since),
+      fetchAllRows(() => sb.from('matches')
+        .select('id, competition_id, home_score, away_score, home_ht_score, away_ht_score')
+        .eq('status','FINISHED')
+        .not('home_score','is',null)
+        .not('away_score','is',null)
+        .order('id', { ascending: true })),
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+
+    (ratingRows||[]).forEach(r => { RATINGS[r.team_id + '::' + r.competition_id] = r; });
+    RECENT_FINISHED = recentRows || [];
+
+    scoreRows.forEach(m => {
+      const b = BASELINE[m.competition_id] || (BASELINE[m.competition_id] = { n:0, btts:0, g:[], nh:0, hd:0 });
+      b.n++;
+      if(m.home_score > 0 && m.away_score > 0) b.btts++;
+      const t = m.home_score + m.away_score;
+      b.g[t] = (b.g[t] || 0) + 1;
+      if(m.home_ht_score != null && m.away_ht_score != null){
+        b.nh++;
+        if(m.home_ht_score === m.away_ht_score) b.hd++;
+      }
+    });
+
+    const leagues = new Map();
+    (ratingRows||[]).forEach(r => leagues.set(String(r.competition_id), r.competition_name));
+    const leagueSel = document.getElementById('leagueSelect');
+    [...leagues.entries()].sort((a,b) => a[1].localeCompare(b[1], 'tr')).forEach(([id, name]) => {
+      const o = document.createElement('option');
+      o.value = id; o.textContent = name;
+      leagueSel.appendChild(o);
+    });
+
+    statusEl.textContent = `Hazır, ${Object.keys(RATINGS).length} takımın katsayıları, ${scoreRows.length} maçın skoru yüklü.`;
+    document.getElementById('runBtn').disabled = false;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Bağlantı hatası: ' + (err.message || err);
+  }
+}
+
+// ---- Yorgunluk (diğer sayfalarla aynı kural) ----
+function findLastMatchDate(teamId, beforeDate){
+  let best = null;
+  RECENT_FINISHED.forEach(m => {
+    if(m.home_team_id !== teamId && m.away_team_id !== teamId) return;
+    const d = new Date(m.utc_date);
+    if(d < beforeDate && (best === null || d > best)) best = d;
+  });
+  return best;
+}
+function fatigueAdjust(restDays){
+  if(restDays == null) return { attackMult: 1, defenseMult: 1 };
+  if(restDays <= 3) return { attackMult: 0.92, defenseMult: 1.08 };
+  if(restDays <= 5) return { attackMult: 0.96, defenseMult: 1.04 };
+  return { attackMult: 1, defenseMult: 1 };
+}
+
+// Maç başlamış ya da bitmişse kaydedilmez
+function isStartedOrOver(utcDateStr, status){
+  if(status === 'FINISHED' || status === 'IN_PLAY' || status === 'PAUSED') return true;
+  return new Date(utcDateStr) <= new Date();
+}
+
+// ---- Poisson + Dixon-Coles ----
+function factorial(n){ let r=1; for(let i=2;i<=n;i++) r*=i; return r; }
+function poissonPmf(k, lambda){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
+function poissonArray(lambda, gmax){
+  const arr = []; let p = Math.exp(-lambda);
+  for(let k=0;k<=gmax;k++){ arr.push(p); p = p * lambda / (k+1); }
+  return arr;
+}
+function tau(x, y, lh, la){
+  if(x===0 && y===0) return 1 - (lh*la*RHO);
+  if(x===0 && y===1) return 1 + (lh*RHO);
+  if(x===1 && y===0) return 1 + (la*RHO);
+  if(x===1 && y===1) return 1 - RHO;
+  return 1;
+}
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function firstHalfShares(hR, aR){
+  const ok = [hR.attack_ht, hR.defense_ht, hR.attack_2h, hR.defense_2h, aR.attack_ht, aR.defense_ht, aR.attack_2h, aR.defense_2h].every(v => v != null);
+  if(!ok) return { shH: DEFAULT_FH_SHARE, shA: DEFAULT_FH_SHARE };
+  const h1 = Number(hR.attack_ht) * Number(aR.defense_ht) * (Number(hR.home_adv_ht) || 1.3);
+  const h2 = Number(hR.attack_2h) * Number(aR.defense_2h) * (Number(hR.home_adv_2h) || 1.3);
+  const a1 = Number(aR.attack_ht) * Number(hR.defense_ht);
+  const a2 = Number(aR.attack_2h) * Number(hR.defense_2h);
+  if(!(h1 + h2 > 0) || !(a1 + a2 > 0)) return { shH: DEFAULT_FH_SHARE, shA: DEFAULT_FH_SHARE };
+  return { shH: clamp(h1/(h1+h2), SHARE_MIN, SHARE_MAX), shA: clamp(a1/(a1+a2), SHARE_MIN, SHARE_MAX) };
+}
+
+// Bir maç için bütün olasılıklar
+function computeAll(hR, aR, hf, af){
+  const attH = Number(hR.attack) * hf.attackMult, defH = Number(hR.defense) * hf.defenseMult;
+  const attA = Number(aR.attack) * af.attackMult, defA = Number(aR.defense) * af.defenseMult;
+  const homeAdv = Number(hR.home_adv) || 1.3;
+  const lamH = Math.max(0.05, attH * defA * homeAdv);
+  const lamA = Math.max(0.05, attA * defH);
+
+  // Maç sonu skor tablosu (Dixon-Coles)
+  let pH = 0, pD = 0, pA = 0, btts = 0, total = 0;
+  const over = { '1.5':0, '2.5':0, '3.5':0 };
+  const cover = { H:{1:0,2:0,3:0}, A:{1:0,2:0,3:0} };   // N handikapa rağmen kazanma (fark >= N+1)
+  for(let x=0;x<=MAXG;x++) for(let y=0;y<=MAXG;y++){
+    let p = poissonPmf(x, lamH) * poissonPmf(y, lamA) * tau(x, y, lamH, lamA);
+    if(p < 0) p = 0;
+    total += p;
+    if(x > y) pH += p; else if(x === y) pD += p; else pA += p;
+    if(x > 0 && y > 0) btts += p;
+    Object.keys(over).forEach(L => { if(x + y > Number(L)) over[L] += p; });
+    [1,2,3].forEach(N => {
+      if(x - y >= N + 1) cover.H[N] += p;
+      if(y - x >= N + 1) cover.A[N] += p;
+    });
+  }
+  const norm = v => v / total;
+  const out = { pH: norm(pH), pD: norm(pD), pA: norm(pA), btts: norm(btts), over:{}, coverH:{}, coverA:{} };
+  Object.keys(over).forEach(L => { out.over[L] = norm(over[L]); });
+  [1,2,3].forEach(N => { out.coverH[N] = norm(cover.H[N]); out.coverA[N] = norm(cover.A[N]); });
+
+  // İlk yarı payları
+  const { shH, shA } = firstHalfShares(hR, aR);
+
+  // İlk yarı beraberlik
+  const ph = poissonArray(lamH*shH, GMAX_HT), pa = poissonArray(lamA*shA, GMAX_HT);
+  let hd = 0;
+  for(let k=0;k<=GMAX_HT;k++) hd += ph[k] * pa[k];
+  out.htDraw = hd;
+
+  // İlk yarı / maç sonu: X/1 ve X/2
+  const p1h = poissonArray(lamH*shH, GMAX_FT),     p1a = poissonArray(lamA*shA, GMAX_FT);
+  const p2h = poissonArray(lamH*(1-shH), GMAX_FT), p2a = poissonArray(lamA*(1-shA), GMAX_FT);
+  let x1 = 0, x2 = 0, tot2 = 0;
+  for(let a=0;a<=GMAX_FT;a++) for(let b=0;b<=GMAX_FT;b++){
+    const pFirst = p1h[a] * p1a[b];
+    for(let c=0;c<=GMAX_FT;c++) for(let d=0;d<=GMAX_FT;d++){
+      const p = pFirst * p2h[c] * p2a[d];
+      tot2 += p;
+      if(a === b){
+        const diff = (a + c) - (b + d);
+        if(diff > 0) x1 += p; else if(diff < 0) x2 += p;
+      }
+    }
+  }
+  out.x1 = x1 / tot2; out.x2 = x2 / tot2;
+  return out;
+}
+
+// Ligde toplam golün çizgiyi aştığı maç oranı
+function baseOver(compId, line){
+  const b = BASELINE[compId];
+  if(!b || b.n < MIN_BASELINE_N) return null;
+  let c = 0;
+  b.g.forEach((cnt, t) => { if(cnt && t > line) c += cnt; });
+  return c / b.n;
+}
+
+// Bir maçtan, her bahis türü için modelin seçtiği tarafı çıkarır
+function candidates(it){
+  const r = it.r, comp = it.f.competition_id, b = BASELINE[comp];
+  const out = [];
+  const add = (gid, key, label, p, base) => out.push({ gid, key, label, p, base });
+
+  // Maç Sonucu
+  const home = r.pH >= r.pA;
+  add('ms', home ? 'home' : 'away', home ? 'Ev Sahibi Kazanır (MS 1)' : 'Deplasman Kazanır (MS 2)', home ? r.pH : r.pA, null);
+
+  // Karşılıklı Gol
+  const baseB = (b && b.n >= MIN_BASELINE_N) ? b.btts / b.n : null;
+  const yes = r.btts >= 1 - r.btts;
+  add('btts', yes ? 'btts' : 'nobtts', yes ? 'Karşılıklı Gol Var' : 'Karşılıklı Gol Yok', yes ? r.btts : 1 - r.btts,
+      baseB == null ? null : (yes ? baseB : 1 - baseB));
+
+  // Alt / Üst
+  [['1.5','ou15'],['2.5','ou25'],['3.5','ou35']].forEach(([L, gid]) => {
+    const pO = r.over[L], isOver = pO >= 1 - pO;
+    const bo = baseOver(comp, Number(L));
+    add(gid, (isOver ? 'over' : 'under') + L.replace('.', ''), (isOver ? 'Üst ' : 'Alt ') + L, isOver ? pO : 1 - pO,
+        bo == null ? null : (isOver ? bo : 1 - bo));
+  });
+
+  // İlk Yarı Beraberlik
+  add('htd', 'htDraw', 'İlk Yarı Sonucu: Beraberlik', r.htDraw,
+      (b && b.nh >= MIN_BASELINE_N) ? b.hd / b.nh : null);
+
+  // İlk Yarı / Maç Sonu
+  const isX1 = r.x1 >= r.x2;
+  add('htft', isX1 ? 'htft_x1' : 'htft_x2',
+      isX1 ? 'İlk Yarı / Maç Sonu: X/1 (ilk yarı berabere, ev sahibi kazanır)' : 'İlk Yarı / Maç Sonu: X/2 (ilk yarı berabere, deplasman kazanır)',
+      isX1 ? r.x1 : r.x2, null);
+
+  // Handikap
+  [1,2,3].forEach(N => {
+    const h = r.coverH[N] >= r.coverA[N];
+    add('hc' + N, (h ? 'hcH' : 'hcA') + N,
+        `Handikap: ${h ? 'Ev sahibi' : 'Deplasman'} -${N} (${N + 1}+ farkla kazanır)`,
+        h ? r.coverH[N] : r.coverA[N], null);
+  });
+  return out;
+}
+
+document.getElementById('runBtn').addEventListener('click', async () => {
+  const startVal = document.getElementById('startDate').value;
+  const endVal = document.getElementById('endDate').value;
+  if(!startVal || !endVal) return;
+  const leagueSelEl = document.getElementById('leagueSelect');
+  const leagueVal = leagueSelEl.value;
+  const leagueName = leagueVal ? leagueSelEl.options[leagueSelEl.selectedIndex].textContent : '';
+
+  statusEl.textContent = 'Maçlar hesaplanıyor…';
+  PENDING_ROWS = []; PENDING_CTX = null;
+  document.getElementById('saveBtn').disabled = true;
+  document.getElementById('saveStatus').textContent = '';
+
+  try{
+    const fixtures = await fetchAllRows(() => {
+      let q = sb.from('matches')
+        .select('id, competition_id, home_team_id, away_team_id, utc_date, status')
+        .in('status', ['SCHEDULED','TIMED','IN_PLAY','PAUSED'])
+        .gte('utc_date', startVal + 'T00:00:00Z')
+        .lte('utc_date', endVal + 'T23:59:59Z');
+      if(leagueVal) q = q.eq('competition_id', Number(leagueVal));
+      return q.order('utc_date', { ascending: true }).order('id', { ascending: true });
+    });
+
+    const items = [];
+    fixtures.forEach(f => {
+      if(isStartedOrOver(f.utc_date, f.status)) return;
+      const hR = RATINGS[f.home_team_id + '::' + f.competition_id];
+      const aR = RATINGS[f.away_team_id + '::' + f.competition_id];
+      if(!hR || !aR) return;
+      const matchDate = new Date(f.utc_date);
+      const homeRest = findLastMatchDate(f.home_team_id, matchDate);
+      const awayRest = findLastMatchDate(f.away_team_id, matchDate);
+      const hf = fatigueAdjust(homeRest ? Math.round((matchDate-homeRest)/86400000) : null);
+      const af = fatigueAdjust(awayRest ? Math.round((matchDate-awayRest)/86400000) : null);
+      items.push({ f, r: computeAll(hR, aR, hf, af) });
+    });
+
+    const body = document.getElementById('resultBody');
+    body.innerHTML = '';
+    if(items.length === 0){
+      let msg = leagueVal ? `${leagueName} için bu tarih aralığında oynanmamış maç yok.` : 'Bu tarih aralığında oynanmamış maç yok.';
+      if(/s[uü]per lig/i.test(leagueName)) msg += ' Süper Lig için yaklaşan fikstür kaynağımız yok.';
+      body.innerHTML = `<tr><td colspan="5" style="color:var(--muted2);">${msg}</td></tr>`;
+      statusEl.textContent = '0 maç tarandı.';
+      return;
+    }
+
+    // Seçilen bahisleri topla
+    const picked = [];
+    items.forEach(it => candidates(it).forEach(c => {
+      const g = GROUPS.find(x => x.id === c.gid);
+      if(c.p >= g.min) picked.push({ it, c, g });
+    }));
+
+    // Daha önce Haftalık Kayıt ile kaydedilenler (aynı maç + aynı bahis) atlanır
+    const existing = new Set();
+    const ids = items.map(x => x.f.id);
+    for(let i=0;i<ids.length;i+=200){
+      const chunk = ids.slice(i, i+200);
+      const rows = await fetchAllRows(() => sb.from('market_recommendation_results')
+        .select('id, match_id, market_key')
+        .eq('batch_page', BATCH_PAGE)
+        .in('match_id', chunk)
+        .order('id', { ascending: true }));
+      rows.forEach(r => existing.add(r.match_id + '|' + r.market_key));
+    }
+
+    const batchId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2));
+    const perGroup = {};
+    GROUPS.forEach(g => { perGroup[g.id] = { fresh: 0, dup: 0 }; });
+    picked.forEach(({ it, c, g }) => {
+      if(existing.has(it.f.id + '|' + c.key)){ perGroup[g.id].dup++; return; }
+      perGroup[g.id].fresh++;
+      PENDING_ROWS.push({
+        match_id: it.f.id, market_key: c.key, market_label: c.label,
+        model_pct: c.p, base_pct: c.base, source: g.page,
+        batch_id: batchId, batch_page: BATCH_PAGE,
+        batch_start: startVal, batch_end: endVal, batch_league: leagueName || 'Tüm ligler',
+        batch_option: `${g.name} (en az %${Math.round(g.min*100)})`,
+      });
+    });
+    PENDING_CTX = { startVal, endVal };
+
+    GROUPS.forEach(g => {
+      const pg = perGroup[g.id];
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${g.name}</td>
+        <td class="num dim">%${Math.round(g.min*100)}</td>
+        <td class="num dim">${items.length}</td>
+        <td class="num pick">${pg.fresh}</td>
+        <td class="num dim">${pg.dup}</td>`;
+      body.appendChild(tr);
+    });
+    const tot = PENDING_ROWS.length;
+    const trT = document.createElement('tr');
+    trT.innerHTML = `<td><strong>Toplam</strong></td><td></td><td class="num dim">${items.length}</td><td class="num pick">${tot}</td><td class="num dim">${Object.values(perGroup).reduce((s,x) => s + x.dup, 0)}</td>`;
+    body.appendChild(trT);
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = tot === 0;
+    btn.textContent = tot === 0 ? 'Kaydedilecek yeni bahis yok' : `${tot} bahsin hepsini Doğrulamaya Kaydet`;
+    statusEl.textContent = `${items.length} maç tarandı, ${tot} yeni bahis kaydedilmeye hazır.`;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Hata: ' + (err.message || err);
+  }
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const st = document.getElementById('saveStatus');
+  const btn = document.getElementById('saveBtn');
+  if(PENDING_ROWS.length === 0) return;
+  btn.disabled = true;                       // aynı listeyi iki kez kaydetmeyi önler
+  st.textContent = 'Kaydediliyor…';
+  try{
+    const rows = PENDING_ROWS;
+    for(let i=0;i<rows.length;i+=500){
+      const { error } = await sb.from('market_recommendations')
+        .upsert(rows.slice(i, i+500), { onConflict: 'match_id,market_key,batch_id' });
+      if(error) throw error;
+    }
+    st.textContent = `${rows.length} bahis kaydedildi. Sonuçlar Doğrulama Paneli > Seçeneklere Göre Oranlar bölümünde (sayfa filtresi: Haftalık Kayıt).`;
+    PENDING_ROWS = [];
+  }catch(err){
+    console.error(err);
+    btn.disabled = false;
+    st.textContent = 'Hata: ' + (err.message || err);
+  }
+});
+
+init();
+</script>
+</body>
+</html>
